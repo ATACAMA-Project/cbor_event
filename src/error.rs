@@ -1,13 +1,12 @@
-use alloc::string::{FromUtf8Error, String};
-use alloc::vec::Vec;
 use core::fmt;
+use core::str::Utf8Error;
 
 use len;
 use types::Type;
 
 /// all expected error for cbor parsing and serialising
 #[derive(Debug)]
-pub enum Error {
+pub enum Error<'a> {
     ExpectedU8,
     ExpectedU16,
     ExpectedU32,
@@ -27,22 +26,22 @@ pub enum Error {
     UnknownLenType(u8),
     IndefiniteLenNotSupported(Type),
     WrongLen(u64, len::Len, &'static str),
-    InvalidTextError(FromUtf8Error),
-    CannotParse(Type, Vec<u8>),
+    InvalidTextError(Utf8Error),
+    CannotParse(Type, &'a [u8]),
     TrailingData,
     InvalidIndefiniteString,
     InvalidLenPassed(len::Sz),
     InvalidNint(i128),
 
-    CustomError(String),
+    CustomError(&'a str),
 }
-impl From<FromUtf8Error> for Error {
-    fn from(e: FromUtf8Error) -> Self {
+impl From<Utf8Error> for Error<'_> {
+    fn from(e: Utf8Error) -> Self {
         Error::InvalidTextError(e)
     }
 }
 
-impl fmt::Display for Error {
+impl fmt::Display for Error<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         use Error::*;
         match self {

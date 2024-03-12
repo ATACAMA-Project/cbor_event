@@ -1,4 +1,3 @@
-use alloc::format;
 use error::Error;
 #[cfg(test)]
 use quickcheck::{Arbitrary, Gen};
@@ -69,13 +68,14 @@ pub enum Special {
 }
 impl Special {
     #[inline]
-    pub fn unwrap_bool(&self) -> Result<bool> {
+    pub fn unwrap_bool(&self) -> Result<&bool> {
         match self {
-            Special::Bool(b) => Ok(*b),
-            _ => Err(Error::CustomError(format!(
-                "Expected Special::Bool, received {:?}",
-                self
-            ))),
+            Special::Bool(b) => Ok(b),
+            _ => Err(Error::CustomError(
+                format_args!("Expected Special::Bool, received {:?}", self)
+                    .as_str()
+                    .unwrap(),
+            )),
         }
     }
 
@@ -83,10 +83,11 @@ impl Special {
     pub fn unwrap_null(&self) -> Result<()> {
         match self {
             Special::Null => Ok(()),
-            _ => Err(Error::CustomError(format!(
-                "Expected Special::Null, received {:?}",
-                self
-            ))),
+            _ => Err(Error::CustomError(
+                format_args!("Expected Special::Null, received {:?}", self)
+                    .as_str()
+                    .unwrap(),
+            )),
         }
     }
 
@@ -94,32 +95,35 @@ impl Special {
     pub fn unwrap_undefined(&self) -> Result<()> {
         match self {
             Special::Undefined => Ok(()),
-            _ => Err(Error::CustomError(format!(
-                "Expected Special::Undefined, received {:?}",
-                self
-            ))),
+            _ => Err(Error::CustomError(
+                format_args!("Expected Special::Undefined, received {:?}", self)
+                    .as_str()
+                    .unwrap(),
+            )),
         }
     }
 
     #[inline]
-    pub fn unwrap_unassigned(&self) -> Result<u8> {
+    pub fn unwrap_unassigned(&self) -> Result<&u8> {
         match self {
-            Special::Unassigned(v) => Ok(*v),
-            _ => Err(Error::CustomError(format!(
-                "Expected Special::Unassigned, received {:?}",
-                self
-            ))),
+            Special::Unassigned(v) => Ok(v),
+            _ => Err(Error::CustomError(
+                format_args!("Expected Special::Unassigned, received {:?}", self)
+                    .as_str()
+                    .unwrap(),
+            )),
         }
     }
 
     #[inline]
-    pub fn unwrap_float(&self) -> Result<f64> {
+    pub fn unwrap_float(&self) -> Result<&f64> {
         match self {
-            Special::Float(f) => Ok(*f),
-            _ => Err(Error::CustomError(format!(
-                "Expected Special::Float, received {:?}",
-                self
-            ))),
+            Special::Float(f) => Ok(f),
+            _ => Err(Error::CustomError(
+                format_args!("Expected Special::Float, received {:?}", self)
+                    .as_str()
+                    .unwrap(),
+            )),
         }
     }
 
@@ -127,10 +131,11 @@ impl Special {
     pub fn unwrap_break(&self) -> Result<()> {
         match self {
             Special::Break => Ok(()),
-            _ => Err(Error::CustomError(format!(
-                "Expected Special::Break, received {:?}",
-                self
-            ))),
+            _ => Err(Error::CustomError(
+                format_args!("Expected Special::Break, received {:?}", self)
+                    .as_str()
+                    .unwrap(),
+            )),
         }
     }
 }

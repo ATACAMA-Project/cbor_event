@@ -92,12 +92,14 @@ const CBOR_PAYLOAD_LENGTH_U64: u8 = 27;
 /// [`Serialize`](./se/trait.Serialize.html) and
 /// [`Deserialize`](./de/trait.Deserialize.html).
 ///
-pub fn test_encode_decode<V: Sized + PartialEq + Serialize + Deserialize>(v: &V) -> Result<bool> {
+pub fn test_encode_decode<'a, V: Sized + PartialEq + Serialize + Deserialize<'a>>(
+    v: &'a V,
+) -> Result<bool> {
     let mut se = se::Serializer::new_vec();
     v.serialize(&mut se)?;
     let bytes = se.finalize();
 
-    let mut raw = de::Deserializer::from(bytes);
+    let mut raw = de::Deserializer::from(bytes.as_slice());
     let v_ = Deserialize::deserialize(&mut raw)?;
 
     Ok(v == &v_)

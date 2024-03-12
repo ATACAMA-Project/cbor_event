@@ -1005,7 +1005,7 @@ mod test {
             0xBA, 0xAD, 0xF0, 0x0D, 0xCA, 0xFE, 0xD0, 0x0D, 0xDE, 0xAD, 0xBE, 0xEF, 0xCA, 0xFE,
             0xBE, 0xEF,
         ];
-        let indef_lens = vec![
+        let indef_lens = [
             (4, Sz::Inline),
             (4, Sz::One),
             (4, Sz::Two),
@@ -1024,7 +1024,7 @@ mod test {
             .unwrap()
             .write_bytes_sz(vec![0xBE, 0xEF], StringLenSz::Len(Sz::Eight))
             .unwrap()
-            .write_bytes_sz(indef_bytes, StringLenSz::Indefinite(indef_lens))
+            .write_bytes_sz(indef_bytes, StringLenSz::Indefinite(*indef_lens))
             .unwrap();
         let bytes = serializer.finalize();
         assert_eq!(bytes, expected_bytes);
@@ -1050,7 +1050,7 @@ mod test {
             expected_bytes.extend_from_slice(&slice[..]);
         }
         expected_bytes.push(0xFF);
-        let indef_lens = vec![
+        let indef_lens = [
             (5, Sz::Inline),
             (5, Sz::One),
             (9, Sz::Two),
@@ -1069,7 +1069,7 @@ mod test {
             .unwrap()
             .write_text_sz("ABC", StringLenSz::Len(Sz::Eight))
             .unwrap()
-            .write_text_sz("HelloWorld日本語9ABC", StringLenSz::Indefinite(indef_lens))
+            .write_text_sz("HelloWorld日本語9ABC", StringLenSz::Indefinite(*indef_lens))
             .unwrap();
         let bytes = serializer.finalize();
         assert_eq!(bytes, expected_bytes);
