@@ -68,9 +68,9 @@ pub enum Special {
 }
 impl Special {
     #[inline]
-    pub fn unwrap_bool(&self) -> Result<&bool> {
+    pub fn unwrap_bool(&self) -> Result<bool> {
         match self {
-            Special::Bool(b) => Ok(b),
+            Special::Bool(b) => Ok(*b),
             _ => Err(Error::CustomError(
                 format_args!("Expected Special::Bool, received {:?}", self)
                     .as_str()
@@ -104,9 +104,9 @@ impl Special {
     }
 
     #[inline]
-    pub fn unwrap_unassigned(&self) -> Result<&u8> {
+    pub fn unwrap_unassigned(&self) -> Result<u8> {
         match self {
-            Special::Unassigned(v) => Ok(v),
+            Special::Unassigned(v) => Ok(*v),
             _ => Err(Error::CustomError(
                 format_args!("Expected Special::Unassigned, received {:?}", self)
                     .as_str()
@@ -116,9 +116,9 @@ impl Special {
     }
 
     #[inline]
-    pub fn unwrap_float(&self) -> Result<&f64> {
+    pub fn unwrap_float(&self) -> Result<f64> {
         match self {
-            Special::Float(f) => Ok(f),
+            Special::Float(f) => Ok(*f),
             _ => Err(Error::CustomError(
                 format_args!("Expected Special::Float, received {:?}", self)
                     .as_str()

@@ -41,7 +41,10 @@ impl<'a> ObjectKey<'a> {
     }
 }
 impl<'a> Serialize for ObjectKey<'a> {
-    fn serialize<'se>(&self, serializer: &'se mut Serializer) -> Result<&'se mut Serializer> {
+    fn serialize<'se>(
+        &self,
+        serializer: &'se mut Serializer<'se>,
+    ) -> Result<'se, &'se mut Serializer<'se>> {
         match self {
             ObjectKey::Integer(ref v) => serializer.write_unsigned_integer(*v),
             ObjectKey::Bytes(ref v) => serializer.write_bytes(v),
@@ -49,7 +52,7 @@ impl<'a> Serialize for ObjectKey<'a> {
         }
     }
 }
-impl<'a> Deserialize<'a> for ObjectKey<'_> {
+impl<'a> Deserialize<'a> for ObjectKey<'a> {
     fn deserialize(raw: &mut Deserializer<'a>) -> Result<'a, Self> {
         match raw.cbor_type()? {
             Type::UnsignedInteger => Ok(ObjectKey::Integer(raw.unsigned_integer()?)),
@@ -82,32 +85,35 @@ pub enum Value<'a> {
     Object(BTreeMap<ObjectKey<'a>, Value<'a>>),
     #[cfg(feature = "alloc")]
     IObject(BTreeMap<ObjectKey<'a>, Value<'a>>),
-    #[cfg(feature = "alloc")]
-    Tag(u64, Box<Value<'a>>),
+    Tag(u64, &'a Value<'a>),
     Special(Special),
 }
 
 impl Serialize for Value<'_> {
-    fn serialize<'se>(&self, serializer: &'se mut Serializer) -> Result<&'se mut Serializer> {
+    fn serialize<'se>(
+        &'se self,
+        serializer: &'se mut Serializer<'se>,
+    ) -> Result<'se, &'se mut Serializer<'se>> {
         match self {
             Value::U64(ref v) => serializer.write_unsigned_integer(*v),
             Value::I64(ref v) => serializer.write_negative_integer(*v),
             Value::Bytes(ref v) => serializer.write_bytes(v),
             Value::Text(ref v) => serializer.write_text(v),
             Value::Array(ref v) => {
-                serializer.write_array(Len::Len(v.len() as u64))?;
+                let mut s = serializer.write_array(Len::Len(v.len() as u64))?;
                 for element in v.iter() {
-                    serializer.serialize(element)?;
+                    s = s.serialize(element)?;
                 }
-                Ok(serializer)
+                Ok(s)
             }
             Value::IArray(ref v) => {
-                serializer.write_array(Len::Indefinite)?;
+                let mut s = serializer.write_array(Len::Indefinite)?;
                 for element in v.iter() {
-                    serializer.serialize(element)?;
+                    s = s.serialize(element)?;
                 }
-                serializer.write_special(Special::Break)
+                s.write_special(Special::Break)
             }
+            #[cfg(feature = "alloc")]
             Value::Object(ref v) => {
                 serializer.write_map(Len::Len(v.len() as u64))?;
                 for element in v {
@@ -115,6 +121,7 @@ impl Serialize for Value<'_> {
                 }
                 Ok(serializer)
             }
+            #[cfg(feature = "alloc")]
             Value::IObject(ref v) => {
                 serializer.write_map(Len::Indefinite)?;
                 for element in v {
@@ -122,7 +129,7 @@ impl Serialize for Value<'_> {
                 }
                 serializer.write_special(Special::Break)
             }
-            Value::Tag(ref tag, ref v) => serializer.write_tag(*tag)?.serialize(v.as_ref()),
+            Value::Tag(ref tag, ref v) => serializer.write_tag(*tag)?.serialize(v),
             Value::Special(ref v) => serializer.write_special(*v),
         }
     }
@@ -160,6 +167,7 @@ impl<'a> Deserialize<'a> for Value<'_> {
                     }
                 }
             }
+            #[cfg(feature = "alloc")]
             Type::Map => {
                 let len = raw.map()?;
                 let mut vec = BTreeMap::new();
@@ -192,7 +200,7 @@ impl<'a> Deserialize<'a> for Value<'_> {
             }
             Type::Tag => {
                 let tag = raw.tag()?;
-                Ok(Value::Tag(tag, Box::new(Deserialize::deserialize(raw)?)))
+                Ok(Value::Tag(tag, &Deserialize::deserialize(raw)?))
             }
             Type::Special => Ok(Value::Special(raw.special()?)),
         }

@@ -8,7 +8,7 @@ use alloc::string::String;
 use alloc::string::ToString;
 #[cfg(feature = "alloc")]
 use alloc::vec::Vec;
-use core::fmt::{Display, Formatter, Write};
+use core::fmt::{Display, Formatter};
 use error::Error;
 use len::{Len, LenSz, StringLenSz, Sz};
 use result::Result;
@@ -61,7 +61,7 @@ impl<'a> Deserialize<'a> for u64 {
 
 impl<'a> Deserialize<'a> for bool {
     fn deserialize(raw: &mut Deserializer<'a>) -> Result<'a, Self> {
-        raw.bool().cloned()
+        raw.bool()
     }
 }
 
@@ -73,7 +73,13 @@ impl<'a> Deserialize<'a> for f32 {
 
 impl<'a> Deserialize<'a> for f64 {
     fn deserialize(raw: &mut Deserializer<'a>) -> Result<'a, Self> {
-        raw.float().cloned()
+        raw.float()
+    }
+}
+
+impl<'a> Deserialize<'a> for &'a str {
+    fn deserialize(raw: &mut Deserializer<'a>) -> Result<'a, Self> {
+        raw.text()
     }
 }
 
@@ -85,7 +91,7 @@ impl<'a> Deserialize<'a> for String {
 }
 
 #[cfg(feature = "alloc")]
-impl<T: Deserialize> Deserialize for Vec<T> {
+impl<'a, T: Deserialize<'a>> Deserialize<'a> for Vec<T> {
     fn deserialize(raw: &mut Deserializer) -> Result<'a, Self> {
         let mut vec = Vec::new();
         raw.array_with(|raw| {
@@ -96,8 +102,8 @@ impl<T: Deserialize> Deserialize for Vec<T> {
     }
 }
 #[cfg(feature = "alloc")]
-impl<K: Deserialize + Ord, V: Deserialize> Deserialize for BTreeMap<K, V> {
-    fn deserialize(raw: &mut Deserializer) -> Result<'a, Self> {
+impl<'a, K: Deserialize + Ord, V: Deserialize<'a>> Deserialize<'a> for BTreeMap<K, V> {
+    fn deserialize(raw: &mut Deserializer<'a>) -> Result<'a, Self> {
         let mut vec = BTreeMap::new();
         raw.map_with(|raw| {
             let k = Deserialize::deserialize(raw)?;
@@ -188,7 +194,10 @@ pub struct Deserializer<'a> {
 #[cfg(feature = "alloc")]
 impl From<Vec<u8>> for Deserializer {
     fn from(r: Vec<u8>) -> Self {
-        Deserializer { data: r.as_slice() }
+        Deserializer {
+            data: r.as_slice(),
+            pos: 0,
+        }
     }
 }
 
@@ -220,7 +229,7 @@ impl<'a> Deserializer<'a> {
 
     #[inline]
     fn get(&mut self, index: usize) -> Result<'a, &u8> {
-        match self.data.get(index) {
+        match self.data.get(self.pos + index) {
             None => Err(Error::NotEnough(self.data.len(), index)),
             Some(b) => Ok(b),
         }
@@ -470,14 +479,14 @@ impl<'a> Deserializer<'a> {
     ///
     /// let bytes = raw.bytes().unwrap();
     /// ```
-    pub fn bytes(&mut self) -> Result<'a, &[u8]> {
+    pub fn bytes(&mut self) -> Result<'a, &'a [u8]> {
         Ok(self.bytes_sz()?.0)
     }
 
     /// Read a Bytes from the Deserializer with encoding information
     ///
     /// Same as `bytes` but also returns `StringLenSz` for details about the encoding used.
-    pub fn bytes_sz(&mut self) -> Result<'a, (&[u8], StringLenSz)> {
+    pub fn bytes_sz(&mut self) -> Result<'a, (&'a [u8], StringLenSz)> {
         self.cbor_expect_type(Type::Bytes)?;
         let len_sz = self.cbor_len_sz()?;
         self.advance(1 + len_sz.bytes_following())?;
@@ -525,14 +534,14 @@ impl<'a> Deserializer<'a> {
     ///
     /// assert!(&*text == "text");
     /// ```
-    pub fn text(&mut self) -> Result<'a, &str> {
+    pub fn text(&mut self) -> Result<'a, &'a str> {
         Ok(self.text_sz()?.0)
     }
 
     /// Read a Text from the Deserializer with encoding information
     ///
     /// Same as `text` but also returns `StringLenSz` for details about the encoding used.
-    pub fn text_sz(&mut self) -> Result<'a, (&str, StringLenSz)> {
+    pub fn text_sz(&mut self) -> Result<'a, (&'a str, StringLenSz)> {
         self.cbor_expect_type(Type::Text)?;
         let len_sz = self.cbor_len_sz()?;
         self.advance(1 + len_sz.bytes_following())?;
@@ -811,11 +820,11 @@ impl<'a> Deserializer<'a> {
         }
     }
 
-    pub fn bool(&mut self) -> Result<'a, &bool> {
+    pub fn bool(&mut self) -> Result<'a, bool> {
         self.special()?.unwrap_bool()
     }
 
-    pub fn float(&mut self) -> Result<'a, &f64> {
+    pub fn float(&mut self) -> Result<'a, f64> {
         self.special()?.unwrap_float()
     }
 
@@ -833,10 +842,10 @@ impl<'a> Deserializer<'a> {
         T: Deserialize<'a>,
     {
         let v = self.deserialize()?;
-        if !self.data.is_empty() {
-            Err(Error::TrailingData)
-        } else {
+        if self.pos < self.data.len() {
             Ok(v)
+        } else {
+            Err(Error::TrailingData)
         }
     }
 }
