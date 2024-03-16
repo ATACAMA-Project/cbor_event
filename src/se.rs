@@ -258,6 +258,7 @@ const DEFAULT_CAPACITY: usize = 512;
 #[derive(Debug)]
 pub struct Serializer<'a> {
     data: &'a mut [u8],
+    pos: usize,
 }
 
 impl<'a> Serializer<'a> {
@@ -267,7 +268,8 @@ impl<'a> Serializer<'a> {
     /// to add already CBOR encoded data or to add any bytes that may suite
     /// your protocol.
     pub fn write_raw_bytes(&mut self, bytes: &[u8]) -> Result<&mut Self> {
-        self.data.copy_from_slice(bytes);
+        self.data[self.pos..self.pos + bytes.len()].copy_from_slice(bytes);
+        self.pos += bytes.len();
         Ok(self)
     }
 
@@ -286,7 +288,7 @@ impl<'a> Serializer<'a> {
 
     #[inline]
     pub fn new(w: &'a mut [u8]) -> Self {
-        Serializer { data: w }
+        Serializer { data: w, pos: 0 }
     }
 
     /// finalize the serializer, returning the serializer bytes
@@ -307,33 +309,29 @@ impl<'a> Serializer<'a> {
 
     #[inline]
     fn write_u8(&mut self, value: u8) -> Result<&mut Self> {
-        self.data.copy_from_slice(&[value][..]);
-        Ok(self)
+        self.write_raw_bytes(&[value][..])
     }
 
     #[inline]
     fn write_u16(&mut self, value: u16) -> Result<&mut Self> {
-        self.data
-            .copy_from_slice(&[((value & 0xFF_00) >> 8) as u8, (value & 0x00_FF) as u8][..]);
-        Ok(self)
+        self.write_raw_bytes(&[((value & 0xFF_00) >> 8) as u8, (value & 0x00_FF) as u8][..])
     }
 
     #[inline]
     fn write_u32(&mut self, value: u32) -> Result<&mut Self> {
-        self.data.copy_from_slice(
+        self.write_raw_bytes(
             &[
                 ((value & 0xFF_00_00_00) >> 24) as u8,
                 ((value & 0x00_FF_00_00) >> 16) as u8,
                 ((value & 0x00_00_FF_00) >> 8) as u8,
                 (value & 0x00_00_00_FF) as u8,
             ][..],
-        );
-        Ok(self)
+        )
     }
 
     #[inline]
     fn write_u64(&mut self, value: u64) -> Result<&mut Self> {
-        self.data.copy_from_slice(
+        self.write_raw_bytes(
             &[
                 ((value & 0xFF_00_00_00_00_00_00_00) >> 56) as u8,
                 ((value & 0x00_FF_00_00_00_00_00_00) >> 48) as u8,
@@ -344,14 +342,12 @@ impl<'a> Serializer<'a> {
                 ((value & 0x00_00_00_00_00_00_FF_00) >> 8) as u8,
                 (value & 0x00_00_00_00_00_00_00_FF) as u8,
             ][..],
-        );
-        Ok(self)
+        )
     }
 
     #[inline]
     fn write_f64(&mut self, value: f64) -> Result<&mut Self> {
-        self.data.copy_from_slice(&value.to_be_bytes());
-        Ok(self)
+        self.write_raw_bytes(&value.to_be_bytes())
     }
 
     /// Writes a CBOR type with the extra `len` information
