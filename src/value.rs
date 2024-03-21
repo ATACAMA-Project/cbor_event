@@ -9,6 +9,8 @@
 //!
 //! This is why all the objects here are marked as deprecated
 
+#[cfg(feature = "alloc")]
+use alloc::collections::BTreeMap;
 #[cfg(test)]
 use core::iter::repeat_with;
 
@@ -362,12 +364,11 @@ mod test {
         );
     }
 
-    #[cfg(feature = "alloc")]
     #[test]
     fn tag() {
-        assert!(test_encode_decode(&Value::Tag(23, Box::new(Value::U64(0)))).unwrap());
-        assert!(test_encode_decode(&Value::Tag(24, Box::new(Value::Bytes(&[0; 32])))).unwrap());
-        assert!(test_encode_decode(&Value::Tag(0x1ff, Box::new(Value::Bytes(&[0; 624])))).unwrap());
+        assert!(test_encode_decode(&Value::Tag(23, &Value::U64(0))).unwrap());
+        assert!(test_encode_decode(&Value::Tag(24, &Value::Bytes(&[0; 32]))).unwrap());
+        assert!(test_encode_decode(&Value::Tag(0x1ff, &Value::Bytes(&[0; 624]))).unwrap());
     }
 
     quickcheck! {

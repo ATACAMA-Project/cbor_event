@@ -1,5 +1,7 @@
 //! CBOR serialisation tooling
+#[cfg(feature = "alloc")]
 use alloc::string::String;
+#[cfg(feature = "alloc")]
 use alloc::vec::Vec;
 use core::convert::TryInto;
 
@@ -78,6 +80,7 @@ impl Serialize for f64 {
         serializer.write_special(Special::Float(*self))
     }
 }
+#[cfg(feature = "alloc")]
 impl Serialize for String {
     fn serialize<'a>(
         &self,
@@ -234,14 +237,30 @@ where
 /// serializer.write_bytes(&se.finalize()).unwrap();
 /// ```
 ///
-pub fn serialize_cbor_in_cbor<'a, T>(
+#[cfg(feature = "alloc")]
+pub fn serialize_cbor_in_cbor_vec<'a, T>(
     data: T,
     serializer: &'a mut Serializer<'a>,
 ) -> Result<'a, &'a mut Serializer<'a>>
 where
     T: Serialize,
 {
-    let mut se = Serializer::new_vec();
+    serialize_cbor_in_cbor(
+        data,
+        serializer,
+        Vec::with_capacity(DEFAULT_CAPACITY).as_mut_slice(),
+    )
+}
+
+pub fn serialize_cbor_in_cbor<'a, T>(
+    data: T,
+    serializer: &'a mut Serializer<'a>,
+    buffer: &'a mut [u8],
+) -> Result<'a, &'a mut Serializer<'a>>
+where
+    T: Serialize + 'a,
+{
+    let mut se = Serializer::new(buffer);
     data.serialize(&mut se)?;
     serializer.write_bytes(&se.finalize())
 }
@@ -465,7 +484,7 @@ impl<'a> Serializer<'a> {
         let bytes = bytes.as_ref();
         self.write_type_definite(Type::Bytes, bytes.len() as u64, None)
             .map(|s| {
-                s.data.copy_from_slice(bytes);
+                s.write_raw_bytes(bytes).unwrap();
                 s
             })
     }
@@ -483,7 +502,7 @@ impl<'a> Serializer<'a> {
             StringLenSz::Len(sz) => self
                 .write_type_definite(Type::Bytes, bytes.len() as u64, Some(sz))
                 .map(|s| {
-                    s.data.copy_from_slice(bytes);
+                    s.write_raw_bytes(bytes).unwrap();
                     s
                 }),
             StringLenSz::Indefinite(lens) => {
@@ -494,9 +513,9 @@ impl<'a> Serializer<'a> {
                 self.write_u8(Type::Bytes.to_byte(0x1f))?;
                 let mut start = 0;
                 for (len, sz) in lens {
-                    let end = start + len as usize;
+                    let end = start + *len as usize;
                     let chunk = &bytes[start..end];
-                    self.write_bytes_sz(chunk, StringLenSz::Len(sz))?;
+                    self.write_bytes_sz(chunk, StringLenSz::Len(*sz))?;
                     start = end;
                 }
                 self.write_u8(Type::Special.to_byte(0x1f))?;
@@ -520,10 +539,7 @@ impl<'a> Serializer<'a> {
     pub fn write_text<S: AsRef<str>>(&mut self, text: S) -> Result<&mut Self> {
         let bytes = text.as_ref().as_bytes();
         self.write_type_definite(Type::Text, bytes.len() as u64, None)
-            .map(|s| {
-                s.data.copy_from_slice(bytes);
-                s
-            })
+            .map(|s| s.write_raw_bytes(bytes).unwrap())
     }
 
     /// write the given object as text using a specific string encoding
@@ -534,10 +550,7 @@ impl<'a> Serializer<'a> {
         match sz {
             StringLenSz::Len(sz) => self
                 .write_type_definite(Type::Text, bytes.len() as u64, Some(sz))
-                .map(|s| {
-                    s.data.copy_from_slice(bytes);
-                    s
-                }),
+                .map(|s| s.write_raw_bytes(bytes).unwrap()),
             StringLenSz::Indefinite(lens) => {
                 let sz_sum = lens.iter().fold(0, |sum, len| sum + len.0);
                 if sz_sum != bytes.len() as u64 {
@@ -546,11 +559,11 @@ impl<'a> Serializer<'a> {
                 self.write_u8(Type::Text.to_byte(0x1f))?;
                 let mut start = 0;
                 for (len, sz) in lens {
-                    let end = start + len as usize;
+                    let end = start + *len as usize;
                     let chunk = &bytes[start..end];
-                    let chunk_str = String::from_utf8(chunk.to_vec())
-                        .map_err(|_| Error::InvalidLenPassed(sz))?;
-                    self.write_text_sz(chunk_str, StringLenSz::Len(sz))?;
+                    let chunk_str =
+                        core::str::from_utf8(chunk).map_err(|_| Error::InvalidLenPassed(*sz))?;
+                    self.write_text_sz(chunk_str, StringLenSz::Len(*sz))?;
                     start = end;
                 }
                 self.write_u8(Type::Special.to_byte(0x1f))?;

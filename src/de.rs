@@ -189,6 +189,7 @@ impl<'a, T: Deserialize<'a>> Deserialize<'a> for Option<T> {
 pub struct Deserializer<'a> {
     data: &'a [u8],
     pos: usize,
+    allocate: Option<fn(usize) -> &'a mut [u8]>,
 }
 
 #[cfg(feature = "alloc")]
@@ -197,13 +198,18 @@ impl From<Vec<u8>> for Deserializer {
         Deserializer {
             data: r.as_slice(),
             pos: 0,
+            allocate: Some(move |len| Vec::with_capacity(len).as_mut_slice()),
         }
     }
 }
 
 impl<'a> From<&'a [u8]> for Deserializer<'a> {
     fn from(r: &'a [u8]) -> Self {
-        Deserializer { data: r, pos: 0 }
+        Deserializer {
+            data: r,
+            pos: 0,
+            allocate: None,
+        }
     }
 }
 
@@ -366,8 +372,7 @@ impl<'a> Deserializer<'a> {
         }
     }
 
-    /// consume the given `len` from the underlying buffer. Skipped bytes are
-    /// then lost, they cannot be retrieved for future references.
+    /// consume the given `len` from the underlying buffer
     #[inline]
     pub fn advance(&mut self, len: usize) -> Result<'a, ()> {
         self.pos += len;
@@ -480,20 +485,31 @@ impl<'a> Deserializer<'a> {
     /// let bytes = raw.bytes().unwrap();
     /// ```
     pub fn bytes(&mut self) -> Result<'a, &'a [u8]> {
-        Ok(self.bytes_sz()?.0)
+        Ok(self.bytes_sz(None)?.0)
     }
 
     /// Read a Bytes from the Deserializer with encoding information
     ///
     /// Same as `bytes` but also returns `StringLenSz` for details about the encoding used.
-    pub fn bytes_sz(&mut self) -> Result<'a, (&'a [u8], StringLenSz)> {
+    #[cfg(feature = "alloc")]
+    pub fn bytes_sz_vec(&mut self) -> Result<'a, (&'a [u8], StringLenSz)> {
+        self.bytes_sz(Some(|len| Vec::with_capacity(len).as_mut_slice()))
+    }
+
+    pub fn bytes_sz(
+        &mut self,
+        sz_alloc: Option<fn(usize) -> &'a mut [(u64, Sz)]>,
+    ) -> Result<'a, (&'a [u8], StringLenSz)> {
         self.cbor_expect_type(Type::Bytes)?;
         let len_sz = self.cbor_len_sz()?;
         self.advance(1 + len_sz.bytes_following())?;
         match len_sz {
             LenSz::Indefinite => {
-                let mut bytes: &[u8] = *[];
-                let mut chunk_lens: [(u64, Sz)] = *[];
+                if self.allocate.is_none() {
+                    return Err(Error::NoAllocator);
+                }
+                let start = self.pos;
+                let mut chunks = 0;
                 while self.cbor_type()? != Type::Special || !self.special_break()? {
                     self.cbor_expect_type(Type::Bytes)?;
                     let chunk_len_sz = self.cbor_len_sz()?;
@@ -501,14 +517,39 @@ impl<'a> Deserializer<'a> {
                         LenSz::Indefinite => return Err(Error::InvalidIndefiniteString),
                         LenSz::Len(len, sz) => {
                             self.advance(1 + sz.bytes_following())?;
-                            bytes =
-                                &[bytes, &self.data[self.pos..self.pos + len as usize]].concat();
                             self.advance(len as usize)?;
-                            chunk_lens = [chunk_lens, *[(len, sz)]].concat();
+                            chunks += 1;
                         }
                     }
                 }
-                Ok((bytes, StringLenSz::Indefinite(chunk_lens)))
+                let size = self.pos - start;
+                self.pos -= size;
+                let bytes = self.allocate.unwrap()(size);
+                let mut array_pos: usize = 0;
+                let mut chunk_pos: usize = 0;
+                let mut chunk_lens = sz_alloc.map(|f| f(chunks));
+                while self.cbor_type()? != Type::Special || !self.special_break()? {
+                    self.cbor_expect_type(Type::Bytes)?;
+                    let chunk_len_sz = self.cbor_len_sz()?;
+                    match chunk_len_sz {
+                        LenSz::Indefinite => return Err(Error::InvalidIndefiniteString),
+                        LenSz::Len(len, sz) => {
+                            self.advance(1 + sz.bytes_following())?;
+                            bytes[array_pos..array_pos + len as usize]
+                                .copy_from_slice(&self.data[self.pos..self.pos + len as usize]);
+                            array_pos += len as usize;
+                            self.advance(len as usize)?;
+                            if let Some(ref mut c) = chunk_lens {
+                                c[chunk_pos..chunk_pos + 1].fill((len, sz));
+                                chunk_pos += 1;
+                            }
+                        }
+                    }
+                }
+                Ok((
+                    bytes,
+                    StringLenSz::Indefinite(chunk_lens.unwrap_or(&mut [])),
+                ))
             }
             LenSz::Len(len, sz) => {
                 let bytes = &self.data[self.pos..self.pos + len as usize];
@@ -535,20 +576,31 @@ impl<'a> Deserializer<'a> {
     /// assert!(&*text == "text");
     /// ```
     pub fn text(&mut self) -> Result<'a, &'a str> {
-        Ok(self.text_sz()?.0)
+        Ok(self.text_sz(None)?.0)
     }
 
     /// Read a Text from the Deserializer with encoding information
     ///
     /// Same as `text` but also returns `StringLenSz` for details about the encoding used.
-    pub fn text_sz(&mut self) -> Result<'a, (&'a str, StringLenSz)> {
+    #[cfg(feature = "alloc")]
+    pub fn text_sz_vec(&mut self) -> Result<'a, (&'a str, StringLenSz)> {
+        self.text_sz(Some(|len| Vec::with_capacity(len).as_mut_slice()))
+    }
+
+    pub fn text_sz(
+        &mut self,
+        sz_alloc: Option<fn(usize) -> &'a mut [(u64, Sz)]>,
+    ) -> Result<'a, (&'a str, StringLenSz)> {
         self.cbor_expect_type(Type::Text)?;
         let len_sz = self.cbor_len_sz()?;
         self.advance(1 + len_sz.bytes_following())?;
         match len_sz {
             LenSz::Indefinite => {
-                let mut text: [&str] = *[];
-                let mut chunk_lens: [(u64, Sz)] = *[];
+                if self.allocate.is_none() {
+                    return Err(Error::NoAllocator);
+                }
+                let start = self.pos;
+                let mut chunks = 0;
                 while self.cbor_type()? != Type::Special || !self.special_break()? {
                     self.cbor_expect_type(Type::Text)?;
                     let chunk_len = self.cbor_len_sz()?;
@@ -558,15 +610,41 @@ impl<'a> Deserializer<'a> {
                             // rfc7049 forbids splitting UTF-8 characters across chunks so we must
                             // read each chunk separately as a definite encoded UTF-8 string
                             self.advance(1 + sz.bytes_following())?;
-                            let bytes = &self.data[self.pos..self.pos + len as usize];
-                            let chunk_text = core::str::from_utf8(bytes)?;
                             self.advance(len as usize)?;
-                            text.push_str(chunk_text);
-                            chunk_lens.push((len, sz));
+                            chunks += 1;
                         }
                     }
                 }
-                Ok((text, StringLenSz::Indefinite(chunk_lens)))
+                let size = self.pos - start;
+                self.pos -= size;
+                let bytes = self.allocate.unwrap()(size);
+                let mut array_pos: usize = 0;
+                let mut chunk_pos: usize = 0;
+                let mut chunk_lens = sz_alloc.map(|f| f(chunks));
+                while self.cbor_type()? != Type::Special || !self.special_break()? {
+                    self.cbor_expect_type(Type::Text)?;
+                    let chunk_len = self.cbor_len_sz()?;
+                    match chunk_len {
+                        LenSz::Indefinite => return Err(Error::InvalidIndefiniteString),
+                        LenSz::Len(len, sz) => {
+                            // rfc7049 forbids splitting UTF-8 characters across chunks so we must
+                            // read each chunk separately as a definite encoded UTF-8 string
+                            self.advance(1 + sz.bytes_following())?;
+                            bytes[array_pos..array_pos + len as usize]
+                                .copy_from_slice(&self.data[self.pos..self.pos + len as usize]);
+                            array_pos += len as usize;
+                            self.advance(len as usize)?;
+                            if let Some(ref mut c) = chunk_lens {
+                                c[chunk_pos..chunk_pos + 1].fill((len, sz));
+                                chunk_pos += 1;
+                            }
+                        }
+                    }
+                }
+                Ok((
+                    core::str::from_utf8(bytes)?,
+                    StringLenSz::Indefinite(chunk_lens.unwrap_or(&mut [])),
+                ))
             }
             LenSz::Len(len, sz) => {
                 let bytes = &self.data[self.pos..self.pos + len as usize];
@@ -1221,7 +1299,7 @@ mod test {
             0xBA, 0xAD, 0xF0, 0x0D, 0xCA, 0xFE, 0xD0, 0x0D, 0xDE, 0xAD, 0xBE, 0xEF, 0xCA, 0xFE,
             0xBE, 0xEF,
         ];
-        let indef_lens = vec![
+        let indef_lens = &[
             (4, Sz::Inline),
             (4, Sz::One),
             (4, Sz::Two),
@@ -1229,28 +1307,28 @@ mod test {
             (2, Sz::Eight),
         ];
         assert_eq!(
-            raw.bytes_sz().unwrap(),
+            raw.bytes_sz_vec().unwrap(),
             (vec![0xBA, 0xAD, 0xF0, 0x0D], StringLenSz::Len(Sz::Inline))
         );
         assert_eq!(
-            raw.bytes_sz().unwrap(),
+            raw.bytes_sz_vec().unwrap(),
             (vec![0xCA, 0xFE, 0xD0, 0x0D], StringLenSz::Len(Sz::One))
         );
         assert_eq!(
-            raw.bytes_sz().unwrap(),
+            raw.bytes_sz_vec().unwrap(),
             (vec![0xDE, 0xAD, 0xBE, 0xEF], StringLenSz::Len(Sz::Two))
         );
         assert_eq!(
-            raw.bytes_sz().unwrap(),
+            raw.bytes_sz_vec().unwrap(),
             (vec![0xCA, 0xFE], StringLenSz::Len(Sz::Four))
         );
         assert_eq!(
-            raw.bytes_sz().unwrap(),
+            raw.bytes_sz_vec().unwrap(),
             (vec![0xBE, 0xEF], StringLenSz::Len(Sz::Eight))
         );
         assert_eq!(
-            raw.bytes_sz().unwrap(),
-            (indef_bytes, StringLenSz::Indefinite(*indef_lens))
+            raw.bytes_sz_vec().unwrap(),
+            (indef_bytes, StringLenSz::Indefinite(indef_lens))
         );
     }
 
@@ -1275,7 +1353,7 @@ mod test {
         }
         vec.push(0xFF);
         let mut raw = Deserializer::from(vec);
-        let indef_lens = vec![
+        let indef_lens = &[
             (5, Sz::Inline),
             (5, Sz::One),
             (9, Sz::Two),
@@ -1283,30 +1361,30 @@ mod test {
             (3, Sz::Eight),
         ];
         assert_eq!(
-            raw.text_sz().unwrap(),
+            raw.text_sz_vec().unwrap(),
             ("Hello".into(), StringLenSz::Len(Sz::Inline))
         );
         assert_eq!(
-            raw.text_sz().unwrap(),
+            raw.text_sz_vec().unwrap(),
             ("World".into(), StringLenSz::Len(Sz::One))
         );
         assert_eq!(
-            raw.text_sz().unwrap(),
+            raw.text_sz_vec().unwrap(),
             ("日本語".into(), StringLenSz::Len(Sz::Two))
         );
         assert_eq!(
-            raw.text_sz().unwrap(),
+            raw.text_sz_vec().unwrap(),
             ("9".into(), StringLenSz::Len(Sz::Four))
         );
         assert_eq!(
-            raw.text_sz().unwrap(),
+            raw.text_sz_vec().unwrap(),
             ("ABC".into(), StringLenSz::Len(Sz::Eight))
         );
         assert_eq!(
-            raw.text_sz().unwrap(),
+            raw.text_sz_vec().unwrap(),
             (
                 "HelloWorld日本語9ABC".into(),
-                StringLenSz::Indefinite(*indef_lens)
+                StringLenSz::Indefinite(indef_lens)
             )
         );
     }

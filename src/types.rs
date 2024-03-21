@@ -31,7 +31,7 @@ impl Type {
             Type::Special => 0b1110_0000,
         }
     }
-    pub fn from_byte(byte: u8) -> Type {
+    pub fn from_byte(byte: &u8) -> Type {
         match byte & 0b1110_0000 {
             0b0000_0000 => Type::UnsignedInteger,
             0b0010_0000 => Type::NegativeInteger,
@@ -45,8 +45,8 @@ impl Type {
         }
     }
 }
-impl From<u8> for Type {
-    fn from(byte: u8) -> Type {
+impl From<&u8> for Type {
+    fn from(byte: &u8) -> Type {
         Type::from_byte(byte)
     }
 }
@@ -68,9 +68,9 @@ pub enum Special {
 }
 impl Special {
     #[inline]
-    pub fn unwrap_bool(&self) -> Result<bool> {
+    pub fn unwrap_bool(self) -> Result<'static, bool> {
         match self {
-            Special::Bool(b) => Ok(*b),
+            Special::Bool(b) => Ok(b),
             _ => Err(Error::CustomError(
                 format_args!("Expected Special::Bool, received {:?}", self)
                     .as_str()
@@ -80,7 +80,7 @@ impl Special {
     }
 
     #[inline]
-    pub fn unwrap_null(&self) -> Result<()> {
+    pub fn unwrap_null(self) -> Result<'static, ()> {
         match self {
             Special::Null => Ok(()),
             _ => Err(Error::CustomError(
@@ -92,7 +92,7 @@ impl Special {
     }
 
     #[inline]
-    pub fn unwrap_undefined(&self) -> Result<()> {
+    pub fn unwrap_undefined(self) -> Result<'static, ()> {
         match self {
             Special::Undefined => Ok(()),
             _ => Err(Error::CustomError(
@@ -104,9 +104,9 @@ impl Special {
     }
 
     #[inline]
-    pub fn unwrap_unassigned(&self) -> Result<u8> {
+    pub fn unwrap_unassigned(self) -> Result<'static, u8> {
         match self {
-            Special::Unassigned(v) => Ok(*v),
+            Special::Unassigned(v) => Ok(v),
             _ => Err(Error::CustomError(
                 format_args!("Expected Special::Unassigned, received {:?}", self)
                     .as_str()
@@ -116,9 +116,9 @@ impl Special {
     }
 
     #[inline]
-    pub fn unwrap_float(&self) -> Result<f64> {
+    pub fn unwrap_float(self) -> Result<'static, f64> {
         match self {
-            Special::Float(f) => Ok(*f),
+            Special::Float(f) => Ok(f),
             _ => Err(Error::CustomError(
                 format_args!("Expected Special::Float, received {:?}", self)
                     .as_str()
@@ -128,7 +128,7 @@ impl Special {
     }
 
     #[inline]
-    pub fn unwrap_break(&self) -> Result<()> {
+    pub fn unwrap_break(self) -> Result<'static, ()> {
         match self {
             Special::Break => Ok(()),
             _ => Err(Error::CustomError(
@@ -162,18 +162,23 @@ mod tests {
     #[test]
     fn major_type_byte_encoding() {
         for i in 0b0000_0000..=0b0001_1111 {
-            assert!(
-                Type::UnsignedInteger == Type::from_byte(Type::to_byte(Type::UnsignedInteger, i))
+            assert_eq!(
+                Type::UnsignedInteger,
+                Type::from_byte(&Type::to_byte(Type::UnsignedInteger, i))
             );
-            assert!(
-                Type::NegativeInteger == Type::from_byte(Type::to_byte(Type::NegativeInteger, i))
+            assert_eq!(
+                Type::NegativeInteger,
+                Type::from_byte(&Type::to_byte(Type::NegativeInteger, i))
             );
-            assert!(Type::Bytes == Type::from_byte(Type::to_byte(Type::Bytes, i)));
-            assert!(Type::Text == Type::from_byte(Type::to_byte(Type::Text, i)));
-            assert!(Type::Array == Type::from_byte(Type::to_byte(Type::Array, i)));
-            assert!(Type::Map == Type::from_byte(Type::to_byte(Type::Map, i)));
-            assert!(Type::Tag == Type::from_byte(Type::to_byte(Type::Tag, i)));
-            assert!(Type::Special == Type::from_byte(Type::to_byte(Type::Special, i)));
+            assert_eq!(Type::Bytes, Type::from_byte(&Type::to_byte(Type::Bytes, i)));
+            assert_eq!(Type::Text, Type::from_byte(&Type::to_byte(Type::Text, i)));
+            assert_eq!(Type::Array, Type::from_byte(&Type::to_byte(Type::Array, i)));
+            assert_eq!(Type::Map, Type::from_byte(&Type::to_byte(Type::Map, i)));
+            assert_eq!(Type::Tag, Type::from_byte(&Type::to_byte(Type::Tag, i)));
+            assert_eq!(
+                Type::Special,
+                Type::from_byte(&Type::to_byte(Type::Special, i))
+            );
         }
     }
 }

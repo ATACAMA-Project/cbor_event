@@ -62,6 +62,7 @@
 #[cfg(test)]
 #[macro_use]
 extern crate quickcheck;
+#[cfg(any(feature = "alloc", test))]
 extern crate alloc;
 
 pub mod de;

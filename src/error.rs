@@ -33,6 +33,8 @@ pub enum Error<'a> {
     InvalidLenPassed(len::Sz),
     InvalidNint(i128),
 
+    NoAllocator,
+
     CustomError(&'a str),
 }
 impl From<Utf8Error> for Error<'_> {
@@ -88,6 +90,7 @@ impl fmt::Display for Error<'_> {
             TrailingData => write!(f, "Unexpected trailing data in CBOR"),
             InvalidIndefiniteString => write!(f, "Invalid cbor: Invalid indefinite string format"),
             InvalidLenPassed(sz) => write!(f, "Invalid length for serialization: {:?}", sz),
+            NoAllocator => write!(f, "No allocator provided"),
             CustomError(err) => write!(f, "Invalid cbor: {}", err),
             InvalidNint(x) => write!(f, "Passed nint {} out of range", x),
         }

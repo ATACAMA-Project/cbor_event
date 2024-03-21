@@ -90,7 +90,7 @@ impl LenSz {
 /// the length e.g. 4 can be represented inline in the type, or in 1/2/4/8
 /// additional bytes
 #[derive(Debug, PartialEq, Eq)]
-pub enum StringLenSz {
-    Indefinite([(u64, Sz)]),
+pub enum StringLenSz<'a> {
+    Indefinite(&'a [(u64, Sz)]),
     Len(Sz),
 }
