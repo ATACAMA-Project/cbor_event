@@ -11,6 +11,7 @@
 
 #[cfg(feature = "alloc")]
 use alloc::collections::BTreeMap;
+use core::fmt::Debug;
 #[cfg(test)]
 use core::iter::repeat_with;
 
@@ -81,8 +82,8 @@ pub enum Value<'a> {
     I64(i64),
     Bytes(&'a [u8]),
     Text(&'a str),
-    Array(&'a [Value<'a>]),
-    IArray(&'a [Value<'a>]),
+    Array(ValueArrayIter<'a>),
+    IArray(ValueArrayIter<'a>),
     #[cfg(feature = "alloc")]
     Object(BTreeMap<ObjectKey<'a>, Value<'a>>),
     #[cfg(feature = "alloc")]
@@ -103,15 +104,15 @@ impl Serialize for Value<'_> {
             Value::Text(ref v) => serializer.write_text(v),
             Value::Array(ref v) => {
                 let mut s = serializer.write_array(Len::Len(v.len() as u64))?;
-                for element in v.iter() {
-                    s = s.serialize(element)?;
+                for element in v.into_iter() {
+                    s = s.serialize(&element)?;
                 }
                 Ok(s)
             }
-            Value::IArray(ref v) => {
+            Value::IArray(v) => {
                 let mut s = serializer.write_array(Len::Indefinite)?;
-                for element in v.iter() {
-                    s = s.serialize(element)?;
+                for element in v.into_iter() {
+                    s = s.serialize(&element)?;
                 }
                 s.write_special(Special::Break)
             }
@@ -145,9 +146,10 @@ impl<'a> Deserialize<'a> for Value<'_> {
             Type::Text => Ok(Value::Text(raw.text()?)),
             Type::Array => {
                 let len = raw.array()?;
-                let mut vec = Vec::new();
                 match len {
                     Len::Indefinite => {
+                        let mut item_count = 0;
+                        let start = raw.position();
                         while {
                             let t = raw.cbor_type()?;
                             if t == Type::Special {
@@ -155,18 +157,19 @@ impl<'a> Deserialize<'a> for Value<'_> {
                                 assert_eq!(special, Special::Break);
                                 false
                             } else {
-                                vec.push(Deserialize::deserialize(raw)?);
+                                Deserialize::deserialize(raw)?;
+                                item_count += 1;
                                 true
                             }
                         } {}
-                        Ok(Value::IArray(vec))
+                        raw.seek(start)?;
+                        Ok(Value::IArray(ValueArrayIter::new(raw, len, item_count)))
                     }
-                    Len::Len(len) => {
-                        for _ in 0..len {
-                            vec.push(Deserialize::deserialize(raw)?);
-                        }
-                        Ok(Value::Array(vec))
-                    }
+                    Len::Len(item_count) => Ok(Value::Array(ValueArrayIter::new(
+                        raw,
+                        len,
+                        item_count as usize,
+                    ))),
                 }
             }
             #[cfg(feature = "alloc")]
@@ -206,6 +209,115 @@ impl<'a> Deserialize<'a> for Value<'_> {
             }
             Type::Special => Ok(Value::Special(raw.special()?)),
         }
+    }
+}
+
+struct ValueArrayIter<'a> {
+    raw: &'a mut Deserializer<'static>,
+    len: Len,
+    item_number: usize,
+    start_pos: usize,
+    iteration_pos: usize,
+    iterated_item_number: usize,
+}
+
+impl Clone for ValueArrayIter<'_> {
+    fn clone(&self) -> Self {
+        ValueArrayIter {
+            raw: self.raw,
+            len: self.len,
+            item_number: self.item_number,
+            start_pos: self.start_pos,
+            iteration_pos: self.iteration_pos,
+            iterated_item_number: self.iterated_item_number,
+        }
+    }
+}
+
+impl Debug for ValueArrayIter<'_> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_list().entries(self.clone()).finish()
+    }
+}
+
+impl PartialEq for ValueArrayIter<'_> {
+    fn eq(&self, other: &Self) -> bool {
+        if self.len() != other.len() {
+            return false;
+        }
+        let mut me = self.clone();
+        let mut other = other.clone();
+        (0..self.len())
+            .into_iter()
+            .map(|i| me.next().unwrap().eq(&other.next().unwrap()))
+            .all(|x| x)
+    }
+}
+
+impl PartialOrd for ValueArrayIter<'_> {
+    fn partial_cmp(&self, other: &Self) -> Option<core::cmp::Ordering> {
+        if self.len() != other.len() {
+            return None;
+        }
+        let mut me = self.clone();
+        let mut other = other.clone();
+        (0..self.len())
+            .into_iter()
+            .map(|i| me.next().unwrap().partial_cmp(&other.next().unwrap()))
+            .fold(Some(core::cmp::Ordering::Equal), |acc, x| {
+                if acc == Some(core::cmp::Ordering::Equal) {
+                    x
+                } else {
+                    acc
+                }
+            })
+    }
+}
+
+impl<'a> ValueArrayIter<'_> {
+    fn new(raw: &'a mut Deserializer<'static>, len: Len, item_number: usize) -> Self {
+        ValueArrayIter {
+            raw,
+            len,
+            item_number,
+            start_pos: raw.position(),
+            iteration_pos: raw.position(),
+            iterated_item_number: 0,
+        }
+    }
+
+    fn len(&self) -> usize {
+        self.item_number
+    }
+}
+
+impl Iterator for ValueArrayIter<'_> {
+    type Item = Value<'static>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        // Save deserializer position
+        let iterate_pos = self.raw.position();
+        // Goto array items position
+        self.raw.seek(self.iteration_pos).unwrap();
+        let val = if self.iterated_item_number >= self.item_number {
+            if self.len == Len::Indefinite {
+                let t = self.raw.cbor_type().unwrap();
+                if t == Type::Special {
+                    let special = self.raw.special().unwrap();
+                    assert_eq!(special, Special::Break);
+                }
+            }
+            None
+        } else {
+            Some(Deserialize::deserialize(self.raw).unwrap())
+        };
+        // Count iterated items
+        self.iterated_item_number += 1;
+        // Save current item position for next item
+        self.iteration_pos = self.raw.position();
+        // Restore deserializer position
+        self.raw.seek(iterate_pos).unwrap();
+        val
     }
 }
 

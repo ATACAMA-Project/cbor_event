@@ -380,6 +380,21 @@ impl<'a> Deserializer<'a> {
         Ok(())
     }
 
+    #[inline]
+    pub fn position(&self) -> usize {
+        self.pos
+    }
+
+    #[inline]
+    pub fn seek(&mut self, pos: usize) -> Result<'a, ()> {
+        if pos > self.data.len() {
+            Err(Error::NotEnough(self.data.len(), pos))
+        } else {
+            self.pos = pos;
+            Ok(())
+        }
+    }
+
     /// Read an `UnsignedInteger` from the `Deserializer`
     ///
     /// The function fails if the type of the given Deserializer is not `Type::UnsignedInteger`.
