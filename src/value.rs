@@ -14,6 +14,8 @@ use alloc::collections::BTreeMap;
 use core::fmt::Debug;
 #[cfg(test)]
 use core::iter::repeat_with;
+use core::iter::FromIterator;
+use core::result::IntoIter;
 
 #[cfg(test)]
 use quickcheck::{Arbitrary, Gen};
@@ -24,6 +26,7 @@ use len::Len;
 use result::Result;
 use se::*;
 use types::{Special, Type};
+use value::ValueArrayIter::DE;
 
 /// CBOR Object key, represents the possible supported values for
 /// a CBOR key in a CBOR Map.
@@ -103,15 +106,15 @@ impl Serialize for Value<'_> {
             Value::Bytes(ref v) => serializer.write_bytes(v),
             Value::Text(ref v) => serializer.write_text(v),
             Value::Array(ref v) => {
-                let mut s = serializer.write_array(Len::Len(v.len() as u64))?;
-                for element in v.into_iter() {
+                let mut s = serializer.write_array(Len::Len(v.clone().count() as u64))?;
+                for element in v.clone().into_iter() {
                     s = s.serialize(&element)?;
                 }
                 Ok(s)
             }
             Value::IArray(v) => {
                 let mut s = serializer.write_array(Len::Indefinite)?;
-                for element in v.into_iter() {
+                for element in v.clone().into_iter() {
                     s = s.serialize(&element)?;
                 }
                 s.write_special(Special::Break)
@@ -148,7 +151,6 @@ impl<'a> Deserialize<'a> for Value<'_> {
                 let len = raw.array()?;
                 match len {
                     Len::Indefinite => {
-                        let mut item_count = 0;
                         let start = raw.position();
                         while {
                             let t = raw.cbor_type()?;
@@ -157,50 +159,63 @@ impl<'a> Deserialize<'a> for Value<'_> {
                                 assert_eq!(special, Special::Break);
                                 false
                             } else {
-                                Deserialize::deserialize(raw)?;
-                                item_count += 1;
+                                Value::deserialize(raw)?;
                                 true
                             }
                         } {}
-                        raw.seek(start)?;
-                        Ok(Value::IArray(ValueArrayIter::new(raw, len, item_count)))
+                        Ok(Value::IArray(ValueArrayIter::new(
+                            &raw.inner()[start..raw.position()],
+                            len,
+                        )))
                     }
-                    Len::Len(item_count) => Ok(Value::Array(ValueArrayIter::new(
-                        raw,
-                        len,
-                        item_count as usize,
-                    ))),
+                    Len::Len(item_count) => {
+                        let start = raw.position();
+                        (0..item_count).for_each(|_| {
+                            Value::deserialize(raw);
+                        });
+                        Ok(Value::Array(ValueArrayIter::new(
+                            &raw.inner()[start..raw.position()],
+                            len,
+                        )))
+                    }
                 }
             }
-            #[cfg(feature = "alloc")]
             Type::Map => {
-                let len = raw.map()?;
-                let mut vec = BTreeMap::new();
-                match len {
-                    Len::Indefinite => {
-                        while {
-                            let t = raw.cbor_type()?;
-                            if t == Type::Special {
-                                let special = raw.special()?;
-                                assert_eq!(special, Special::Break);
-                                false
-                            } else {
+                #[cfg(feature = "alloc")]
+                {
+                    let len = raw.map()?;
+                    let mut vec = BTreeMap::new();
+                    match len {
+                        Len::Indefinite => {
+                            while {
+                                let t = raw.cbor_type()?;
+                                if t == Type::Special {
+                                    let special = raw.special()?;
+                                    assert_eq!(special, Special::Break);
+                                    false
+                                } else {
+                                    let k = Deserialize::deserialize(raw)?;
+                                    let v = Deserialize::deserialize(raw)?;
+                                    vec.insert(k, v);
+                                    true
+                                }
+                            } {}
+                            Ok(Value::IObject(vec))
+                        }
+                        Len::Len(len) => {
+                            for _ in 0..len {
                                 let k = Deserialize::deserialize(raw)?;
                                 let v = Deserialize::deserialize(raw)?;
                                 vec.insert(k, v);
-                                true
                             }
-                        } {}
-                        Ok(Value::IObject(vec))
-                    }
-                    Len::Len(len) => {
-                        for _ in 0..len {
-                            let k = Deserialize::deserialize(raw)?;
-                            let v = Deserialize::deserialize(raw)?;
-                            vec.insert(k, v);
+                            Ok(Value::Object(vec))
                         }
-                        Ok(Value::Object(vec))
                     }
+                }
+
+                #[cfg(not(feature = "alloc"))]
+                {
+                    Err(Error::NoAllocator)
                 }
             }
             Type::Tag => {
@@ -212,25 +227,34 @@ impl<'a> Deserialize<'a> for Value<'_> {
     }
 }
 
-struct ValueArrayIter<'a> {
-    raw: &'a mut Deserializer<'static>,
+enum ValueArrayIter<'a> {
+    SE(&'a IntoIter<Value<'a>>),
+    DE(DeValueArrayIter<'a>),
+}
+
+impl<'a> ValueArrayIter<'a> {
+    fn new(data: &'a [u8], len: Len) -> Self {
+        DE(DeValueArrayIter::new(data, len))
+    }
+}
+
+impl<'a> FromIterator<Value<'a>> for ValueArrayIter<'a> {
+    fn from_iter<T: IntoIterator<Item = Value<'a>, IntoIter = &'a IntoIter<Value<'a>>>>(
+        iter: T,
+    ) -> Self {
+        ValueArrayIter::SE(iter.into_iter())
+    }
+}
+
+struct DeValueArrayIter<'a> {
+    raw: &'a mut Deserializer<'a>,
     len: Len,
-    item_number: usize,
-    start_pos: usize,
-    iteration_pos: usize,
     iterated_item_number: usize,
 }
 
 impl Clone for ValueArrayIter<'_> {
     fn clone(&self) -> Self {
-        ValueArrayIter {
-            raw: self.raw,
-            len: self.len,
-            item_number: self.item_number,
-            start_pos: self.start_pos,
-            iteration_pos: self.iteration_pos,
-            iterated_item_number: self.iterated_item_number,
-        }
+        todo!()
     }
 }
 
@@ -242,28 +266,23 @@ impl Debug for ValueArrayIter<'_> {
 
 impl PartialEq for ValueArrayIter<'_> {
     fn eq(&self, other: &Self) -> bool {
-        if self.len() != other.len() {
-            return false;
-        }
-        let mut me = self.clone();
+        let me = self.clone();
         let mut other = other.clone();
-        (0..self.len())
-            .into_iter()
-            .map(|i| me.next().unwrap().eq(&other.next().unwrap()))
-            .all(|x| x)
+        for i in me.into_iter() {
+            if i != other.next().unwrap() {
+                return false;
+            }
+        }
+        true
     }
 }
 
 impl PartialOrd for ValueArrayIter<'_> {
     fn partial_cmp(&self, other: &Self) -> Option<core::cmp::Ordering> {
-        if self.len() != other.len() {
-            return None;
-        }
-        let mut me = self.clone();
+        let me = self.clone();
         let mut other = other.clone();
-        (0..self.len())
-            .into_iter()
-            .map(|i| me.next().unwrap().partial_cmp(&other.next().unwrap()))
+        me.into_iter()
+            .map(|i| i.partial_cmp(&other.next().unwrap()))
             .fold(Some(core::cmp::Ordering::Equal), |acc, x| {
                 if acc == Some(core::cmp::Ordering::Equal) {
                     x
@@ -274,50 +293,39 @@ impl PartialOrd for ValueArrayIter<'_> {
     }
 }
 
-impl<'a> ValueArrayIter<'_> {
-    fn new(raw: &'a mut Deserializer<'static>, len: Len, item_number: usize) -> Self {
-        ValueArrayIter {
-            raw,
+impl<'a> DeValueArrayIter<'a> {
+    fn new(data: &'a [u8], len: Len) -> Self {
+        let mut raw = Deserializer::from(data);
+        DeValueArrayIter {
+            raw: &mut raw,
             len,
-            item_number,
-            start_pos: raw.position(),
-            iteration_pos: raw.position(),
             iterated_item_number: 0,
         }
     }
-
-    fn len(&self) -> usize {
-        self.item_number
-    }
 }
 
-impl Iterator for ValueArrayIter<'_> {
-    type Item = Value<'static>;
+impl<'a> Iterator for ValueArrayIter<'a> {
+    type Item = &'a Value<'static>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        // Save deserializer position
-        let iterate_pos = self.raw.position();
-        // Goto array items position
-        self.raw.seek(self.iteration_pos).unwrap();
-        let val = if self.iterated_item_number >= self.item_number {
-            if self.len == Len::Indefinite {
-                let t = self.raw.cbor_type().unwrap();
-                if t == Type::Special {
-                    let special = self.raw.special().unwrap();
-                    assert_eq!(special, Special::Break);
-                }
+        match self {
+            ValueArrayIter::SE(items) => items.next().map(|v| &v),
+            DE(d) => {
+                let val = if d.len == Len::Indefinite {
+                    let t = d.raw.cbor_type().unwrap();
+                    if t == Type::Special {
+                        let special = d.raw.special().unwrap();
+                        assert_eq!(special, Special::Break);
+                    }
+                    None
+                } else {
+                    Some(&Deserialize::deserialize(d.raw).unwrap())
+                };
+                // Count iterated items
+                d.iterated_item_number += 1;
+                val
             }
-            None
-        } else {
-            Some(Deserialize::deserialize(self.raw).unwrap())
-        };
-        // Count iterated items
-        self.iterated_item_number += 1;
-        // Save current item position for next item
-        self.iteration_pos = self.raw.position();
-        // Restore deserializer position
-        self.raw.seek(iterate_pos).unwrap();
-        val
+        }
     }
 }
 
