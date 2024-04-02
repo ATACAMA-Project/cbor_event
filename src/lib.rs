@@ -59,11 +59,18 @@
 //! ```
 
 #![no_std]
+#[cfg(any(feature = "alloc", test))]
+extern crate alloc;
 #[cfg(test)]
 #[macro_use]
 extern crate quickcheck;
-#[cfg(any(feature = "alloc", test))]
-extern crate alloc;
+
+pub use de::Deserialize;
+pub use error::Error;
+pub use len::*;
+pub use result::Result;
+pub use se::Serialize;
+pub use types::*;
 
 pub mod de;
 mod error;
@@ -73,14 +80,6 @@ mod result;
 pub mod se;
 mod types;
 mod value;
-
-pub use de::Deserialize;
-pub use error::Error;
-pub use len::*;
-pub use result::Result;
-pub use se::Serialize;
-pub use types::*;
-pub use value::{ObjectKey, Value};
 
 const MAX_INLINE_ENCODING: u64 = 23;
 
@@ -101,8 +100,8 @@ pub fn test_encode_decode<
     B: Deserialize<'c>,
     V: Sized + PartialEq<B> + Serialize + Deserialize<'a>,
 >(
-    data: &'c mut [u8],
     v: &'c V,
+    data: &'c mut [u8],
 ) -> Result<'b, bool> {
     let mut se = se::Serializer::new(data);
     v.serialize(&mut se)

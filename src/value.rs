@@ -15,7 +15,6 @@ use core::fmt::Debug;
 #[cfg(test)]
 use core::iter::repeat_with;
 use core::iter::FromIterator;
-use core::result::IntoIter;
 
 #[cfg(test)]
 use quickcheck::{Arbitrary, Gen};
@@ -26,16 +25,19 @@ use len::Len;
 use result::Result;
 use se::*;
 use types::{Special, Type};
+#[cfg(feature = "alloc")]
 use value::ValueArrayIter::DE;
 
 /// CBOR Object key, represents the possible supported values for
 /// a CBOR key in a CBOR Map.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+#[cfg(feature = "alloc")]
 pub enum ObjectKey<'a> {
     Integer(u64),
     Bytes(&'a [u8]),
     Text(&'a str),
 }
+#[cfg(feature = "alloc")]
 impl<'a> ObjectKey<'a> {
     /// convert the given `ObjectKey` into a CBOR [`Value`](./struct.Value.html)
     pub fn value(self) -> Value<'a> {
@@ -46,6 +48,7 @@ impl<'a> ObjectKey<'a> {
         }
     }
 }
+#[cfg(feature = "alloc")]
 impl<'a> Serialize for ObjectKey<'a> {
     fn serialize<'se>(
         &self,
@@ -58,6 +61,7 @@ impl<'a> Serialize for ObjectKey<'a> {
         }
     }
 }
+#[cfg(feature = "alloc")]
 impl<'a> Deserialize<'a> for ObjectKey<'a> {
     fn deserialize(raw: &mut Deserializer<'a>) -> Result<'a, Self> {
         match raw.cbor_type()? {
@@ -80,6 +84,7 @@ impl<'a> Deserialize<'a> for ObjectKey<'a> {
 /// so. However it is handy for debugging or reverse a given protocol.
 ///
 #[derive(Debug, Clone, PartialEq, PartialOrd)]
+#[cfg(feature = "alloc")]
 pub enum Value<'a> {
     U64(u64),
     I64(i64),
@@ -87,14 +92,13 @@ pub enum Value<'a> {
     Text(&'a str),
     Array(ValueArrayIter<'a>),
     IArray(ValueArrayIter<'a>),
-    #[cfg(feature = "alloc")]
     Object(BTreeMap<ObjectKey<'a>, Value<'a>>),
-    #[cfg(feature = "alloc")]
     IObject(BTreeMap<ObjectKey<'a>, Value<'a>>),
     Tag(u64, &'a Value<'a>),
     Special(Special),
 }
 
+#[cfg(feature = "alloc")]
 impl Serialize for Value<'_> {
     fn serialize<'se>(
         &'se self,
@@ -105,21 +109,20 @@ impl Serialize for Value<'_> {
             Value::I64(ref v) => serializer.write_negative_integer(*v),
             Value::Bytes(ref v) => serializer.write_bytes(v),
             Value::Text(ref v) => serializer.write_text(v),
-            Value::Array(ref v) => {
+            Value::Array(ref mut v) => {
                 let mut s = serializer.write_array(Len::Len(v.clone().count() as u64))?;
-                for element in v.clone().into_iter() {
+                for element in v {
                     s = s.serialize(&element)?;
                 }
                 Ok(s)
             }
-            Value::IArray(v) => {
+            Value::IArray(ref mut v) => {
                 let mut s = serializer.write_array(Len::Indefinite)?;
-                for element in v.clone().into_iter() {
+                for element in v {
                     s = s.serialize(&element)?;
                 }
                 s.write_special(Special::Break)
             }
-            #[cfg(feature = "alloc")]
             Value::Object(ref v) => {
                 serializer.write_map(Len::Len(v.len() as u64))?;
                 for element in v {
@@ -127,7 +130,6 @@ impl Serialize for Value<'_> {
                 }
                 Ok(serializer)
             }
-            #[cfg(feature = "alloc")]
             Value::IObject(ref v) => {
                 serializer.write_map(Len::Indefinite)?;
                 for element in v {
@@ -140,6 +142,7 @@ impl Serialize for Value<'_> {
         }
     }
 }
+#[cfg(feature = "alloc")]
 impl<'a> Deserialize<'a> for Value<'_> {
     fn deserialize(raw: &mut Deserializer<'a>) -> Result<'a, Self> {
         match raw.cbor_type()? {
@@ -181,41 +184,33 @@ impl<'a> Deserialize<'a> for Value<'_> {
                 }
             }
             Type::Map => {
-                #[cfg(feature = "alloc")]
-                {
-                    let len = raw.map()?;
-                    let mut vec = BTreeMap::new();
-                    match len {
-                        Len::Indefinite => {
-                            while {
-                                let t = raw.cbor_type()?;
-                                if t == Type::Special {
-                                    let special = raw.special()?;
-                                    assert_eq!(special, Special::Break);
-                                    false
-                                } else {
-                                    let k = Deserialize::deserialize(raw)?;
-                                    let v = Deserialize::deserialize(raw)?;
-                                    vec.insert(k, v);
-                                    true
-                                }
-                            } {}
-                            Ok(Value::IObject(vec))
-                        }
-                        Len::Len(len) => {
-                            for _ in 0..len {
+                let len = raw.map()?;
+                let mut vec = BTreeMap::new();
+                match len {
+                    Len::Indefinite => {
+                        while {
+                            let t = raw.cbor_type()?;
+                            if t == Type::Special {
+                                let special = raw.special()?;
+                                assert_eq!(special, Special::Break);
+                                false
+                            } else {
                                 let k = Deserialize::deserialize(raw)?;
                                 let v = Deserialize::deserialize(raw)?;
                                 vec.insert(k, v);
+                                true
                             }
-                            Ok(Value::Object(vec))
-                        }
+                        } {}
+                        Ok(Value::IObject(vec))
                     }
-                }
-
-                #[cfg(not(feature = "alloc"))]
-                {
-                    Err(Error::NoAllocator)
+                    Len::Len(len) => {
+                        for _ in 0..len {
+                            let k = Deserialize::deserialize(raw)?;
+                            let v = Deserialize::deserialize(raw)?;
+                            vec.insert(k, v);
+                        }
+                        Ok(Value::Object(vec))
+                    }
                 }
             }
             Type::Tag => {
@@ -227,43 +222,48 @@ impl<'a> Deserialize<'a> for Value<'_> {
     }
 }
 
+#[cfg(feature = "alloc")]
 enum ValueArrayIter<'a> {
-    SE(&'a IntoIter<Value<'a>>),
+    SE(&'a dyn Iterator<Item = Value<'a>>),
     DE(DeValueArrayIter<'a>),
 }
 
+#[cfg(feature = "alloc")]
 impl<'a> ValueArrayIter<'a> {
     fn new(data: &'a [u8], len: Len) -> Self {
         DE(DeValueArrayIter::new(data, len))
     }
 }
 
+#[cfg(feature = "alloc")]
 impl<'a> FromIterator<Value<'a>> for ValueArrayIter<'a> {
-    fn from_iter<T: IntoIterator<Item = Value<'a>, IntoIter = &'a IntoIter<Value<'a>>>>(
-        iter: T,
-    ) -> Self {
-        ValueArrayIter::SE(iter.into_iter())
+    fn from_iter<T: IntoIterator<Item = Value<'a>>>(iter: T) -> Self {
+        ValueArrayIter::SE(&iter.into_iter())
     }
 }
 
+#[cfg(feature = "alloc")]
 struct DeValueArrayIter<'a> {
     raw: &'a mut Deserializer<'a>,
     len: Len,
     iterated_item_number: usize,
 }
 
+#[cfg(feature = "alloc")]
 impl Clone for ValueArrayIter<'_> {
     fn clone(&self) -> Self {
         todo!()
     }
 }
 
+#[cfg(feature = "alloc")]
 impl Debug for ValueArrayIter<'_> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.debug_list().entries(self.clone()).finish()
     }
 }
 
+#[cfg(feature = "alloc")]
 impl PartialEq for ValueArrayIter<'_> {
     fn eq(&self, other: &Self) -> bool {
         let me = self.clone();
@@ -277,6 +277,7 @@ impl PartialEq for ValueArrayIter<'_> {
     }
 }
 
+#[cfg(feature = "alloc")]
 impl PartialOrd for ValueArrayIter<'_> {
     fn partial_cmp(&self, other: &Self) -> Option<core::cmp::Ordering> {
         let me = self.clone();
@@ -293,6 +294,7 @@ impl PartialOrd for ValueArrayIter<'_> {
     }
 }
 
+#[cfg(feature = "alloc")]
 impl<'a> DeValueArrayIter<'a> {
     fn new(data: &'a [u8], len: Len) -> Self {
         let mut raw = Deserializer::from(data);
@@ -304,6 +306,7 @@ impl<'a> DeValueArrayIter<'a> {
     }
 }
 
+#[cfg(feature = "alloc")]
 impl<'a> Iterator for ValueArrayIter<'a> {
     type Item = &'a Value<'static>;
 
@@ -330,6 +333,7 @@ impl<'a> Iterator for ValueArrayIter<'a> {
 }
 
 #[cfg(test)]
+#[cfg(feature = "alloc")]
 impl Arbitrary for ObjectKey {
     fn arbitrary<G: Gen>(g: &mut G) -> Self {
         match u8::arbitrary(g) % 3 {
@@ -342,6 +346,7 @@ impl Arbitrary for ObjectKey {
 }
 
 #[cfg(test)]
+#[cfg(feature = "alloc")]
 fn arbitrary_value_finite<G: Gen>(g: &mut G) -> Value {
     match u8::arbitrary(g) % 5 {
         0 => Value::U64(Arbitrary::arbitrary(g)),
@@ -354,6 +359,7 @@ fn arbitrary_value_finite<G: Gen>(g: &mut G) -> Value {
 }
 
 #[cfg(test)]
+#[cfg(feature = "alloc")]
 fn arbitrary_value_indefinite<G: Gen>(counter: usize, g: &mut G) -> Value {
     if counter == 0 {
         arbitrary_value_finite(g)
@@ -416,6 +422,7 @@ fn arbitrary_value_indefinite<G: Gen>(counter: usize, g: &mut G) -> Value {
 }
 
 #[cfg(test)]
+#[cfg(feature = "alloc")]
 impl Arbitrary for Value {
     fn arbitrary<G: Gen>(g: &mut G) -> Self {
         arbitrary_value_indefinite(3, g)
@@ -423,6 +430,7 @@ impl Arbitrary for Value {
 }
 
 #[cfg(test)]
+#[cfg(feature = "alloc")]
 mod test {
     use super::super::test_encode_decode;
     use super::*;

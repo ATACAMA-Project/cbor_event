@@ -67,7 +67,7 @@ impl<'a> Deserialize<'a> for bool {
 
 impl<'a> Deserialize<'a> for f32 {
     fn deserialize(raw: &mut Deserializer<'a>) -> Result<'a, Self> {
-        raw.float().map(|f| f.clone() as f32)
+        raw.float().map(|f| f as f32)
     }
 }
 
@@ -223,8 +223,7 @@ impl<'a> Display for Deserializer<'a> {
     fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
         self.data
             .iter()
-            .map(|b| f.write_fmt(format_args!("{:02x}", b)))
-            .collect()
+            .try_for_each(|b| f.write_fmt(format_args!("{:02x}", b)))
     }
 }
 
@@ -1047,7 +1046,7 @@ mod test {
 
         let text = raw.text().unwrap();
 
-        assert_eq!(&text, "text");
+        assert_eq!(text, "text");
     }
     #[test]
     fn text_indefinite() {
@@ -1069,7 +1068,7 @@ mod test {
 
         let text = raw.text().unwrap();
 
-        assert_eq!(&text, "");
+        assert_eq!(text, "");
     }
 
     #[test]
@@ -1163,7 +1162,7 @@ mod test {
 
         assert_eq!(len, Len::Len(5));
 
-        assert_eq!("iohk", &raw.text().unwrap());
+        assert_eq!("iohk", raw.text().unwrap());
         assert_eq!(1, raw.unsigned_integer().unwrap());
         assert_eq!(-1, raw.negative_integer().unwrap());
 
@@ -1192,7 +1191,7 @@ mod test {
         let k = raw.unsigned_integer().unwrap();
         let v = raw.text().unwrap();
         assert_eq!(0, k);
-        assert_eq!("text", &v);
+        assert_eq!("text", v);
 
         let k = raw.unsigned_integer().unwrap();
         let v = raw.unsigned_integer().unwrap();

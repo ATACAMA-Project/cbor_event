@@ -252,6 +252,7 @@ where
     )
 }
 
+#[cfg(feature = "alloc")]
 pub fn serialize_cbor_in_cbor<'a, T>(
     data: T,
     serializer: &'a mut Serializer<'a>,
@@ -261,7 +262,15 @@ where
     T: Serialize + 'a,
 {
     let mut se = Serializer::new(buffer);
-    data.serialize(&mut se)?;
+    {
+        let _ = match data
+            .serialize(&mut se)
+            .map_err(|_| Error::CustomError("Failed to serialise"))
+        {
+            Ok(_) => {}
+            Err(e) => return Err(e),
+        };
+    }
     serializer.write_bytes(&se.finalize())
 }
 
@@ -510,16 +519,16 @@ impl<'a> Serializer<'a> {
                 if sz_sum != bytes.len() as u64 {
                     return Err(Error::InvalidIndefiniteString);
                 }
-                self.write_u8(Type::Bytes.to_byte(0x1f))?;
+                let mut me = self.write_u8(Type::Bytes.to_byte(0x1f))?;
                 let mut start = 0;
                 for (len, sz) in lens {
                     let end = start + *len as usize;
                     let chunk = &bytes[start..end];
-                    self.write_bytes_sz(chunk, StringLenSz::Len(*sz))?;
+                    me = me.write_bytes_sz(chunk, StringLenSz::Len(*sz))?;
                     start = end;
                 }
-                self.write_u8(Type::Special.to_byte(0x1f))?;
-                Ok(self)
+                me = me.write_u8(Type::Special.to_byte(0x1f))?;
+                Ok(me)
             }
         }
     }
@@ -556,18 +565,18 @@ impl<'a> Serializer<'a> {
                 if sz_sum != bytes.len() as u64 {
                     return Err(Error::InvalidIndefiniteString);
                 }
-                self.write_u8(Type::Text.to_byte(0x1f))?;
+                let mut me = self.write_u8(Type::Text.to_byte(0x1f))?;
                 let mut start = 0;
                 for (len, sz) in lens {
                     let end = start + *len as usize;
                     let chunk = &bytes[start..end];
                     let chunk_str =
                         core::str::from_utf8(chunk).map_err(|_| Error::InvalidLenPassed(*sz))?;
-                    self.write_text_sz(chunk_str, StringLenSz::Len(*sz))?;
+                    me = me.write_text_sz(chunk_str, StringLenSz::Len(*sz))?;
                     start = end;
                 }
-                self.write_u8(Type::Special.to_byte(0x1f))?;
-                Ok(self)
+                me = me.write_u8(Type::Special.to_byte(0x1f))?;
+                Ok(me)
             }
         }
     }
@@ -794,6 +803,7 @@ serialize_array!(
 );
 
 #[cfg(test)]
+#[cfg(feature = "alloc")]
 mod test {
     use super::*;
     use alloc::vec;
@@ -1060,7 +1070,7 @@ mod test {
             0xBA, 0xAD, 0xF0, 0x0D, 0xCA, 0xFE, 0xD0, 0x0D, 0xDE, 0xAD, 0xBE, 0xEF, 0xCA, 0xFE,
             0xBE, 0xEF,
         ];
-        let indef_lens = [
+        let indef_lens = &[
             (4, Sz::Inline),
             (4, Sz::One),
             (4, Sz::Two),
@@ -1079,7 +1089,7 @@ mod test {
             .unwrap()
             .write_bytes_sz(vec![0xBE, 0xEF], StringLenSz::Len(Sz::Eight))
             .unwrap()
-            .write_bytes_sz(indef_bytes, StringLenSz::Indefinite(*indef_lens))
+            .write_bytes_sz(indef_bytes, StringLenSz::Indefinite(indef_lens))
             .unwrap();
         let bytes = serializer.finalize();
         assert_eq!(bytes, expected_bytes);
@@ -1105,7 +1115,7 @@ mod test {
             expected_bytes.copy_from_slice(&slice[..]);
         }
         expected_bytes.push(0xFF);
-        let indef_lens = [
+        let indef_lens = &[
             (5, Sz::Inline),
             (5, Sz::One),
             (9, Sz::Two),
@@ -1124,7 +1134,7 @@ mod test {
             .unwrap()
             .write_text_sz("ABC", StringLenSz::Len(Sz::Eight))
             .unwrap()
-            .write_text_sz("HelloWorld日本語9ABC", StringLenSz::Indefinite(*indef_lens))
+            .write_text_sz("HelloWorld日本語9ABC", StringLenSz::Indefinite(indef_lens))
             .unwrap();
         let bytes = serializer.finalize();
         assert_eq!(bytes, expected_bytes);
