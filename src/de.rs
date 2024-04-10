@@ -102,7 +102,7 @@ impl<'a, T: Deserialize<'a>> Deserialize<'a> for Vec<T> {
     }
 }
 #[cfg(feature = "alloc")]
-impl<'a, K: Deserialize + Ord, V: Deserialize<'a>> Deserialize<'a> for BTreeMap<K, V> {
+impl<'a, K: Deserialize<'a> + Ord, V: Deserialize<'a>> Deserialize<'a> for BTreeMap<K, V> {
     fn deserialize(raw: &mut Deserializer<'a>) -> Result<'a, Self> {
         let mut vec = BTreeMap::new();
         raw.map_with(|raw| {
@@ -193,10 +193,10 @@ pub struct Deserializer<'a> {
 }
 
 #[cfg(feature = "alloc")]
-impl From<Vec<u8>> for Deserializer {
+impl From<Vec<u8>> for Deserializer<'_> {
     fn from(r: Vec<u8>) -> Self {
         Deserializer {
-            data: r.as_slice(),
+            data: r.as_ref(),
             pos: 0,
             allocate: Some(move |len| Vec::with_capacity(len).as_mut_slice()),
         }
@@ -989,7 +989,7 @@ mod test {
 
     #[test]
     fn negative_integer() {
-        let vec = vec![0x38, 0x29];
+        let vec = [0x38, 0x29].as_ref();
         let mut raw = Deserializer::from(vec);
 
         let integer = raw.negative_integer().unwrap();
@@ -999,23 +999,25 @@ mod test {
 
     #[test]
     fn bytes() {
-        let vec = vec![
+        let vec = [
             0x52, 0x73, 0x6F, 0x6D, 0x65, 0x20, 0x72, 0x61, 0x6E, 0x64, 0x6F, 0x6D, 0x20, 0x73,
             0x74, 0x72, 0x69, 0x6E, 0x67,
-        ];
-        let mut raw = Deserializer::from(vec.clone());
+        ]
+        .as_ref();
+        let mut raw = Deserializer::from(vec);
 
         let bytes = raw.bytes().unwrap();
         assert_eq!(&vec[1..], &*bytes);
     }
     #[test]
     fn bytes_indefinite() {
-        let chunks = vec![
-            vec![
+        let chunks = [
+            [
                 0x52, 0x73, 0x6F, 0x6D, 0x65, 0x20, 0x72, 0x61, 0x6E, 0x64, 0x6F, 0x6D, 0x20, 0x73,
                 0x74, 0x72, 0x69, 0x6E, 0x67,
-            ],
-            vec![0x44, 0x01, 0x02, 0x03, 0x04],
+            ]
+            .as_ref(),
+            [0x44, 0x01, 0x02, 0x03, 0x04].as_ref(),
         ];
         let mut expected = Vec::new();
         for chunk in chunks.iter() {
@@ -1023,16 +1025,16 @@ mod test {
         }
         let mut vec = vec![0x5f];
         for mut chunk in chunks {
-            vec.append(&mut chunk);
+            vec.extend_from_slice(&mut chunk);
         }
         vec.push(0xff);
-        let mut raw = Deserializer::from(vec.clone());
+        let mut raw = Deserializer::from(vec.as_slice());
         let found = raw.bytes().unwrap();
         assert_eq!(found, expected);
     }
     #[test]
     fn bytes_empty() {
-        let vec = vec![0x40];
+        let vec = [0x40].as_ref();
         let mut raw = Deserializer::from(vec);
 
         let bytes = raw.bytes().unwrap();
@@ -1041,7 +1043,7 @@ mod test {
 
     #[test]
     fn text() {
-        let vec = vec![0x64, 0x74, 0x65, 0x78, 0x74];
+        let vec = [0x64, 0x74, 0x65, 0x78, 0x74].as_ref();
         let mut raw = Deserializer::from(vec);
 
         let text = raw.text().unwrap();
@@ -1050,20 +1052,23 @@ mod test {
     }
     #[test]
     fn text_indefinite() {
-        let chunks = vec![vec![0x64, 0x49, 0x45, 0x54, 0x46], vec![0x61, 0x61]];
+        let chunks = [
+            [0x64, 0x49, 0x45, 0x54, 0x46].as_ref(),
+            [0x61, 0x61].as_ref(),
+        ];
         let expected = "IETFa";
         let mut vec = vec![0x7f];
         for mut chunk in chunks {
-            vec.append(&mut chunk);
+            vec.extend_from_slice(&mut chunk);
         }
         vec.push(0xff);
-        let mut raw = Deserializer::from(vec.clone());
+        let mut raw = Deserializer::from(vec.as_slice());
         let found = raw.text().unwrap();
         assert_eq!(found, expected);
     }
     #[test]
     fn text_empty() {
-        let vec = vec![0x60];
+        let vec = [0x60].as_ref();
         let mut raw = Deserializer::from(vec);
 
         let text = raw.text().unwrap();
@@ -1073,7 +1078,7 @@ mod test {
 
     #[test]
     fn float64() {
-        let vec = vec![0xfb, 0x3f, 0xf1, 0x99, 0x99, 0x99, 0x99, 0x99, 0x9a];
+        let vec = [0xfb, 0x3f, 0xf1, 0x99, 0x99, 0x99, 0x99, 0x99, 0x9a].as_ref();
         let mut raw = Deserializer::from(vec);
 
         let float = raw.float().unwrap();
@@ -1083,7 +1088,7 @@ mod test {
 
     #[test]
     fn float32() {
-        let vec = vec![0xfa, 0x47, 0xc3, 0x50, 0x00];
+        let vec = [0xfa, 0x47, 0xc3, 0x50, 0x00].as_ref();
         let mut raw = Deserializer::from(vec);
 
         let float = raw.float().unwrap();
@@ -1093,7 +1098,7 @@ mod test {
 
     #[test]
     fn array() {
-        let vec = vec![0x86, 0, 1, 2, 3, 4, 5];
+        let vec = [0x86, 0, 1, 2, 3, 4, 5].as_ref();
         let mut raw = Deserializer::from(vec);
 
         let len = raw.array().unwrap();
@@ -1110,7 +1115,7 @@ mod test {
     }
     #[test]
     fn array_empty() {
-        let vec = vec![0x80];
+        let vec = [0x80].as_ref();
         let mut raw = Deserializer::from(vec);
 
         let len = raw.array().unwrap();
@@ -1120,7 +1125,7 @@ mod test {
     }
     #[test]
     fn array_indefinite() {
-        let vec = vec![0x9F, 0x01, 0x02, 0xFF];
+        let vec = [0x9F, 0x01, 0x02, 0xFF].as_ref();
         let mut raw = Deserializer::from(vec);
 
         let len = raw.array().unwrap();
@@ -1129,22 +1134,24 @@ mod test {
         // assert_eq!(&*raw, &[0x01, 0x02, 0xFF][..]);
 
         let i = raw.unsigned_integer().unwrap();
-        assert!(i == 1);
+        assert_eq!(i, 1);
         let i = raw.unsigned_integer().unwrap();
-        assert!(i == 2);
+        assert_eq!(i, 2);
         assert_eq!(Special::Break, raw.special().unwrap());
     }
 
     #[test]
+    #[cfg(feature = "alloc")]
     fn vec_bool_definite() {
-        let vec = vec![0x83, 0xf4, 0xf5, 0xf4];
+        let vec = [0x83, 0xf4, 0xf5, 0xf4].as_ref();
         let mut raw = Deserializer::from(vec);
         let bools = Vec::<bool>::deserialize(&mut raw).unwrap();
         assert_eq!(bools, &[false, true, false]);
     }
     #[test]
+    #[cfg(feature = "alloc")]
     fn vec_bool_indefinite() {
-        let vec = vec![0x9f, 0xf4, 0xf5, 0xf4, 0xff];
+        let vec = [0x9f, 0xf4, 0xf5, 0xf4, 0xff].as_ref();
         let mut raw = Deserializer::from(vec);
         let bools = Vec::<bool>::deserialize(&mut raw).unwrap();
         assert_eq!(bools, &[false, true, false]);
@@ -1152,10 +1159,11 @@ mod test {
 
     #[test]
     fn complex_array() {
-        let vec = vec![
+        let vec = [
             0x85, 0x64, 0x69, 0x6F, 0x68, 0x6B, 0x01, 0x20, 0x84, 0, 1, 2, 3, 0x10,
             /* garbage... */ 0, 1, 2, 3, 4, 5, 6,
-        ];
+        ]
+        .as_ref();
         let mut raw = Deserializer::from(vec);
 
         let len = raw.array().unwrap();
@@ -1181,7 +1189,7 @@ mod test {
 
     #[test]
     fn map() {
-        let vec = vec![0xA2, 0x00, 0x64, 0x74, 0x65, 0x78, 0x74, 0x01, 0x18, 0x2A];
+        let vec = [0xA2, 0x00, 0x64, 0x74, 0x65, 0x78, 0x74, 0x01, 0x18, 0x2A].as_ref();
         let mut raw = Deserializer::from(vec);
 
         let len = raw.map().unwrap();
@@ -1201,7 +1209,7 @@ mod test {
 
     #[test]
     fn map_empty() {
-        let vec = vec![0xA0];
+        let vec = [0xA0].as_ref();
         let mut raw = Deserializer::from(vec);
 
         let len = raw.map().unwrap();
@@ -1210,8 +1218,9 @@ mod test {
     }
 
     #[test]
+    #[cfg(feature = "alloc")]
     fn btreemap_bool_definite() {
-        let vec = vec![0xa2, 0xf4, 0xf5, 0xf5, 0xf4];
+        let vec = [0xa2, 0xf4, 0xf5, 0xf5, 0xf4].as_ref();
         let mut raw = Deserializer::from(vec);
         let boolmap = BTreeMap::<bool, bool>::deserialize(&mut raw).unwrap();
         assert_eq!(boolmap.len(), 2);
@@ -1219,8 +1228,9 @@ mod test {
         assert_eq!(boolmap[&true], false);
     }
     #[test]
+    #[cfg(feature = "alloc")]
     fn btreemap_bool_indefinite() {
-        let vec = vec![0xbf, 0xf4, 0xf5, 0xf5, 0xf4, 0xff];
+        let vec = [0xbf, 0xf4, 0xf5, 0xf5, 0xf4, 0xff].as_ref();
         let mut raw = Deserializer::from(vec);
         let boolmap = BTreeMap::<bool, bool>::deserialize(&mut raw).unwrap();
         assert_eq!(boolmap.len(), 2);
@@ -1230,10 +1240,11 @@ mod test {
 
     #[test]
     fn tag() {
-        let vec = vec![
+        let vec = [
             0xD8, 0x18, 0x52, 0x73, 0x6F, 0x6D, 0x65, 0x20, 0x72, 0x61, 0x6E, 0x64, 0x6F, 0x6D,
             0x20, 0x73, 0x74, 0x72, 0x69, 0x6E, 0x67,
-        ];
+        ]
+        .as_ref();
         let mut raw = Deserializer::from(vec);
 
         let tag = raw.tag().unwrap();
@@ -1245,17 +1256,18 @@ mod test {
 
     #[test]
     fn tag2() {
-        let vec = vec![
+        let vec = [
             0x82, 0xd8, 0x18, 0x53, 0x52, 0x73, 0x6f, 0x6d, 0x65, 0x20, 0x72, 0x61, 0x6e, 0x64,
             0x6f, 0x6d, 0x20, 0x73, 0x74, 0x72, 0x69, 0x6e, 0x67, 0x1a, 0x71, 0xad, 0x58, 0x36,
-        ];
+        ]
+        .as_ref();
         let mut raw = Deserializer::from(vec);
 
         let len = raw.array().unwrap();
         assert_eq!(len, Len::Len(2));
 
         let tag = raw.tag().unwrap();
-        assert!(tag == 24);
+        assert_eq!(tag, 24);
         let _ = raw.bytes().unwrap();
 
         let crc = raw.unsigned_integer().unwrap();
@@ -1264,10 +1276,11 @@ mod test {
 
     #[test]
     fn uint_sz() {
-        let vec = vec![
+        let vec = [
             0x09, 0x18, 0x09, 0x19, 0x00, 0x09, 0x1a, 0x00, 0x00, 0x00, 0x09, 0x1b, 0x00, 0x00,
             0x00, 0x00, 0x00, 0x00, 0x00, 0x09,
-        ];
+        ]
+        .as_ref();
         let mut raw = Deserializer::from(vec);
         assert_eq!(raw.unsigned_integer_sz().unwrap(), (9, Sz::Inline));
         assert_eq!(raw.unsigned_integer_sz().unwrap(), (9, Sz::One));
@@ -1278,10 +1291,11 @@ mod test {
 
     #[test]
     fn nint_sz() {
-        let vec = vec![
+        let vec = [
             0x28, 0x38, 0x08, 0x39, 0x00, 0x08, 0x3a, 0x00, 0x00, 0x00, 0x08, 0x3b, 0x00, 0x00,
             0x00, 0x00, 0x00, 0x00, 0x00, 0x08,
-        ];
+        ]
+        .as_ref();
         let mut raw = Deserializer::from(vec);
         assert_eq!(raw.negative_integer_sz().unwrap(), (-9, Sz::Inline));
         assert_eq!(raw.negative_integer_sz().unwrap(), (-9, Sz::One));
@@ -1308,40 +1322,45 @@ mod test {
             vec.extend_from_slice(&slice[..]);
         }
         vec.push(0xFF);
-        let mut raw = Deserializer::from(vec);
-        let indef_bytes = vec![
+        let mut raw = Deserializer::from(vec.as_slice());
+        let indef_bytes = [
             0xBA, 0xAD, 0xF0, 0x0D, 0xCA, 0xFE, 0xD0, 0x0D, 0xDE, 0xAD, 0xBE, 0xEF, 0xCA, 0xFE,
             0xBE, 0xEF,
-        ];
-        let indef_lens = &[
+        ]
+        .as_ref();
+        let indef_lens = [
             (4, Sz::Inline),
             (4, Sz::One),
             (4, Sz::Two),
             (2, Sz::Four),
             (2, Sz::Eight),
-        ];
+        ]
+        .as_ref();
         assert_eq!(
-            raw.bytes_sz_vec().unwrap(),
-            (vec![0xBA, 0xAD, 0xF0, 0x0D], StringLenSz::Len(Sz::Inline))
+            raw.bytes_sz(None).unwrap(),
+            (
+                [0xBA, 0xAD, 0xF0, 0x0D].as_ref(),
+                StringLenSz::Len(Sz::Inline)
+            )
         );
         assert_eq!(
-            raw.bytes_sz_vec().unwrap(),
-            (vec![0xCA, 0xFE, 0xD0, 0x0D], StringLenSz::Len(Sz::One))
+            raw.bytes_sz(None).unwrap(),
+            ([0xCA, 0xFE, 0xD0, 0x0D].as_ref(), StringLenSz::Len(Sz::One))
         );
         assert_eq!(
-            raw.bytes_sz_vec().unwrap(),
-            (vec![0xDE, 0xAD, 0xBE, 0xEF], StringLenSz::Len(Sz::Two))
+            raw.bytes_sz(None).unwrap(),
+            ([0xDE, 0xAD, 0xBE, 0xEF].as_ref(), StringLenSz::Len(Sz::Two))
         );
         assert_eq!(
-            raw.bytes_sz_vec().unwrap(),
-            (vec![0xCA, 0xFE], StringLenSz::Len(Sz::Four))
+            raw.bytes_sz(None).unwrap(),
+            ([0xCA, 0xFE].as_ref(), StringLenSz::Len(Sz::Four))
         );
         assert_eq!(
-            raw.bytes_sz_vec().unwrap(),
-            (vec![0xBE, 0xEF], StringLenSz::Len(Sz::Eight))
+            raw.bytes_sz(None).unwrap(),
+            ([0xBE, 0xEF].as_ref(), StringLenSz::Len(Sz::Eight))
         );
         assert_eq!(
-            raw.bytes_sz_vec().unwrap(),
+            raw.bytes_sz(None).unwrap(),
             (indef_bytes, StringLenSz::Indefinite(indef_lens))
         );
     }
@@ -1366,7 +1385,7 @@ mod test {
             vec.extend_from_slice(&slice[..]);
         }
         vec.push(0xFF);
-        let mut raw = Deserializer::from(vec);
+        let mut raw = Deserializer::from(vec.as_slice());
         let indef_lens = &[
             (5, Sz::Inline),
             (5, Sz::One),
@@ -1375,27 +1394,27 @@ mod test {
             (3, Sz::Eight),
         ];
         assert_eq!(
-            raw.text_sz_vec().unwrap(),
+            raw.text_sz(None).unwrap(),
             ("Hello".into(), StringLenSz::Len(Sz::Inline))
         );
         assert_eq!(
-            raw.text_sz_vec().unwrap(),
+            raw.text_sz(None).unwrap(),
             ("World".into(), StringLenSz::Len(Sz::One))
         );
         assert_eq!(
-            raw.text_sz_vec().unwrap(),
+            raw.text_sz(None).unwrap(),
             ("日本語".into(), StringLenSz::Len(Sz::Two))
         );
         assert_eq!(
-            raw.text_sz_vec().unwrap(),
+            raw.text_sz(None).unwrap(),
             ("9".into(), StringLenSz::Len(Sz::Four))
         );
         assert_eq!(
-            raw.text_sz_vec().unwrap(),
+            raw.text_sz(None).unwrap(),
             ("ABC".into(), StringLenSz::Len(Sz::Eight))
         );
         assert_eq!(
-            raw.text_sz_vec().unwrap(),
+            raw.text_sz(None).unwrap(),
             (
                 "HelloWorld日本語9ABC".into(),
                 StringLenSz::Indefinite(indef_lens)
@@ -1405,10 +1424,11 @@ mod test {
 
     #[test]
     fn array_sz() {
-        let vec = vec![
+        let vec = [
             0x80, 0x98, 0x01, 0x99, 0x00, 0x02, 0x9a, 0x00, 0x00, 0x00, 0x03, 0x9b, 0x00, 0x00,
             0x00, 0x00, 0x00, 0x00, 0x00, 0x04, 0x9f,
-        ];
+        ]
+        .as_ref();
         let mut raw = Deserializer::from(vec);
         assert_eq!(raw.array_sz().unwrap(), LenSz::Len(0, Sz::Inline));
         assert_eq!(raw.array_sz().unwrap(), LenSz::Len(1, Sz::One));
@@ -1420,10 +1440,11 @@ mod test {
 
     #[test]
     fn map_sz() {
-        let vec = vec![
+        let vec = [
             0xa0, 0xb8, 0x01, 0xb9, 0x00, 0x02, 0xba, 0x00, 0x00, 0x00, 0x03, 0xbb, 0x00, 0x00,
             0x00, 0x00, 0x00, 0x00, 0x00, 0x04, 0xbf,
-        ];
+        ]
+        .as_ref();
         let mut raw = Deserializer::from(vec);
         assert_eq!(raw.map_sz().unwrap(), LenSz::Len(0, Sz::Inline));
         assert_eq!(raw.map_sz().unwrap(), LenSz::Len(1, Sz::One));
@@ -1435,10 +1456,11 @@ mod test {
 
     #[test]
     fn tag_sz() {
-        let vec = vec![
+        let vec = [
             0xc9, 0xd8, 0x01, 0xd9, 0x00, 0x02, 0xda, 0x00, 0x00, 0x00, 0x04, 0xdb, 0x00, 0x00,
             0x00, 0x00, 0x00, 0x00, 0x00, 0x08,
-        ];
+        ]
+        .as_ref();
         let mut raw = Deserializer::from(vec);
         assert_eq!(raw.tag_sz().unwrap(), (9, Sz::Inline));
         assert_eq!(raw.tag_sz().unwrap(), (1, Sz::One));
