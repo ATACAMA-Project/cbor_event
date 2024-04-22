@@ -114,14 +114,14 @@ impl Serialize for Value {
             Value::Array(ref v) => {
                 let mut s = serializer.write_array(Len::Len(v.len() as u64))?;
                 for element in v {
-                    s = s.serialize(&element)?;
+                    s = s.serialize(element)?;
                 }
                 Ok(s)
             }
             Value::IArray(ref v) => {
                 let mut s = serializer.write_array(Len::Indefinite)?;
                 for element in v {
-                    s = s.serialize(&element)?;
+                    s = s.serialize(element)?;
                 }
                 s.write_special(Special::Break)
             }
