@@ -6,7 +6,7 @@ use types::Type;
 
 /// all expected error for cbor parsing and serialising
 #[derive(Debug)]
-pub enum Error<'a> {
+pub enum Error {
     ExpectedU8,
     ExpectedU16,
     ExpectedU32,
@@ -27,7 +27,7 @@ pub enum Error<'a> {
     IndefiniteLenNotSupported(Type),
     WrongLen(u64, len::Len, &'static str),
     InvalidTextError(Utf8Error),
-    CannotParse(Type, &'a [u8]),
+    CannotParse(Type, &'static [u8]),
     TrailingData,
     InvalidIndefiniteString,
     InvalidLenPassed(len::Sz),
@@ -35,15 +35,15 @@ pub enum Error<'a> {
 
     NoAllocator,
 
-    CustomError(&'a str),
+    CustomError(&'static str),
 }
-impl From<Utf8Error> for Error<'_> {
+impl From<Utf8Error> for Error {
     fn from(e: Utf8Error) -> Self {
         Error::InvalidTextError(e)
     }
 }
 
-impl fmt::Display for Error<'_> {
+impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         use Error::*;
         match self {

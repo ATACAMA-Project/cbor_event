@@ -68,7 +68,7 @@ pub enum Special {
 }
 impl Special {
     #[inline]
-    pub fn unwrap_bool(self) -> Result<'static, bool> {
+    pub fn unwrap_bool(self) -> Result<bool> {
         match self {
             Special::Bool(b) => Ok(b),
             _ => Err(Error::CustomError(
@@ -80,7 +80,7 @@ impl Special {
     }
 
     #[inline]
-    pub fn unwrap_null(self) -> Result<'static, ()> {
+    pub fn unwrap_null(self) -> Result<()> {
         match self {
             Special::Null => Ok(()),
             _ => Err(Error::CustomError(
@@ -92,7 +92,7 @@ impl Special {
     }
 
     #[inline]
-    pub fn unwrap_undefined(self) -> Result<'static, ()> {
+    pub fn unwrap_undefined(self) -> Result<()> {
         match self {
             Special::Undefined => Ok(()),
             _ => Err(Error::CustomError(
@@ -104,7 +104,7 @@ impl Special {
     }
 
     #[inline]
-    pub fn unwrap_unassigned(self) -> Result<'static, u8> {
+    pub fn unwrap_unassigned(self) -> Result<u8> {
         match self {
             Special::Unassigned(v) => Ok(v),
             _ => Err(Error::CustomError(
@@ -116,7 +116,7 @@ impl Special {
     }
 
     #[inline]
-    pub fn unwrap_float(self) -> Result<'static, f64> {
+    pub fn unwrap_float(self) -> Result<f64> {
         match self {
             Special::Float(f) => Ok(f),
             _ => Err(Error::CustomError(
@@ -128,7 +128,7 @@ impl Special {
     }
 
     #[inline]
-    pub fn unwrap_break(self) -> Result<'static, ()> {
+    pub fn unwrap_break(self) -> Result<()> {
         match self {
             Special::Break => Ok(()),
             _ => Err(Error::CustomError(

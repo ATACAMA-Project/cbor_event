@@ -17,11 +17,11 @@ use types::{Special, Type};
 pub trait Deserialize<'a>: Sized {
     /// method to implement to deserialise an object from the given
     /// `Deserializer`.
-    fn deserialize(reader: &mut Deserializer<'a>) -> Result<'a, Self>;
+    fn deserialize(reader: &mut Deserializer<'a>) -> Result<Self>;
 }
 
 impl<'a> Deserialize<'a> for u8 {
-    fn deserialize(raw: &mut Deserializer<'a>) -> Result<'a, Self> {
+    fn deserialize(raw: &mut Deserializer<'a>) -> Result<Self> {
         let n = raw.unsigned_integer()?;
         if n > u8::MAX as u64 {
             Err(Error::ExpectedU8)
@@ -32,7 +32,7 @@ impl<'a> Deserialize<'a> for u8 {
 }
 
 impl<'a> Deserialize<'a> for u16 {
-    fn deserialize(raw: &mut Deserializer<'a>) -> Result<'a, Self> {
+    fn deserialize(raw: &mut Deserializer<'a>) -> Result<Self> {
         let n = raw.unsigned_integer()?;
         if n > u16::MAX as u64 {
             Err(Error::ExpectedU16)
@@ -43,7 +43,7 @@ impl<'a> Deserialize<'a> for u16 {
 }
 
 impl<'a> Deserialize<'a> for u32 {
-    fn deserialize(raw: &mut Deserializer<'a>) -> Result<'a, Self> {
+    fn deserialize(raw: &mut Deserializer<'a>) -> Result<Self> {
         let n = raw.unsigned_integer()?;
         if n > u32::MAX as u64 {
             Err(Error::ExpectedU32)
@@ -54,45 +54,45 @@ impl<'a> Deserialize<'a> for u32 {
 }
 
 impl<'a> Deserialize<'a> for u64 {
-    fn deserialize(raw: &mut Deserializer<'a>) -> Result<'a, Self> {
+    fn deserialize(raw: &mut Deserializer<'a>) -> Result<Self> {
         raw.unsigned_integer()
     }
 }
 
 impl<'a> Deserialize<'a> for bool {
-    fn deserialize(raw: &mut Deserializer<'a>) -> Result<'a, Self> {
+    fn deserialize(raw: &mut Deserializer<'a>) -> Result<Self> {
         raw.bool()
     }
 }
 
 impl<'a> Deserialize<'a> for f32 {
-    fn deserialize(raw: &mut Deserializer<'a>) -> Result<'a, Self> {
+    fn deserialize(raw: &mut Deserializer<'a>) -> Result<Self> {
         raw.float().map(|f| f as f32)
     }
 }
 
 impl<'a> Deserialize<'a> for f64 {
-    fn deserialize(raw: &mut Deserializer<'a>) -> Result<'a, Self> {
+    fn deserialize(raw: &mut Deserializer<'a>) -> Result<Self> {
         raw.float()
     }
 }
 
 impl<'a> Deserialize<'a> for &'a str {
-    fn deserialize(raw: &mut Deserializer<'a>) -> Result<'a, Self> {
+    fn deserialize(raw: &mut Deserializer<'a>) -> Result<Self> {
         raw.text()
     }
 }
 
 #[cfg(feature = "alloc")]
 impl<'a> Deserialize<'a> for String {
-    fn deserialize(raw: &mut Deserializer) -> Result<'a, Self> {
-        raw.text().map(|s| s.to_string())
+    fn deserialize(raw: &mut Deserializer<'a>) -> Result<Self> {
+        raw.text().map(move |s| s.to_string())
     }
 }
 
 #[cfg(feature = "alloc")]
 impl<'a, T: Deserialize<'a>> Deserialize<'a> for Vec<T> {
-    fn deserialize(raw: &mut Deserializer) -> Result<'a, Self> {
+    fn deserialize(raw: &mut Deserializer<'a>) -> Result<Self> {
         let mut vec = Vec::new();
         raw.array_with(|raw| {
             vec.push(Deserialize::deserialize(raw)?);
@@ -103,7 +103,7 @@ impl<'a, T: Deserialize<'a>> Deserialize<'a> for Vec<T> {
 }
 #[cfg(feature = "alloc")]
 impl<'a, K: Deserialize<'a> + Ord, V: Deserialize<'a>> Deserialize<'a> for BTreeMap<K, V> {
-    fn deserialize(raw: &mut Deserializer<'a>) -> Result<'a, Self> {
+    fn deserialize(raw: &mut Deserializer<'a>) -> Result<Self> {
         let mut vec = BTreeMap::new();
         raw.map_with(|raw| {
             let k = Deserialize::deserialize(raw)?;
@@ -116,7 +116,7 @@ impl<'a, K: Deserialize<'a> + Ord, V: Deserialize<'a>> Deserialize<'a> for BTree
 }
 
 impl<'a, T: Deserialize<'a>> Deserialize<'a> for Option<T> {
-    fn deserialize(raw: &mut Deserializer<'a>) -> Result<'a, Self> {
+    fn deserialize(raw: &mut Deserializer<'a>) -> Result<Self> {
         match raw.array()? {
             Len::Len(0) => Ok(None),
             Len::Len(1) => Ok(Some(raw.deserialize()?)),
@@ -192,17 +192,6 @@ pub struct Deserializer<'a> {
     allocate: Option<fn(usize) -> &'a mut [u8]>,
 }
 
-#[cfg(feature = "alloc")]
-impl From<Vec<u8>> for Deserializer<'_> {
-    fn from(r: Vec<u8>) -> Self {
-        Deserializer {
-            data: r.as_ref(),
-            pos: 0,
-            allocate: Some(move |len| Vec::with_capacity(len).as_mut_slice()),
-        }
-    }
-}
-
 impl<'a> From<&'a [u8]> for Deserializer<'a> {
     fn from(r: &'a [u8]) -> Self {
         Deserializer {
@@ -233,25 +222,25 @@ impl<'a> Deserializer<'a> {
     }
 
     #[inline]
-    fn get(&mut self, index: usize) -> Result<'a, &u8> {
+    fn get(&mut self, index: usize) -> Result<&u8> {
         match self.data.get(self.pos + index) {
             None => Err(Error::NotEnough(self.data.len(), index)),
             Some(b) => Ok(b),
         }
     }
     #[inline]
-    fn u8(&mut self, index: usize) -> Result<'a, u64> {
+    fn u8(&mut self, index: usize) -> Result<u64> {
         let b = self.get(index)?;
         Ok(*b as u64)
     }
     #[inline]
-    fn u16(&mut self, index: usize) -> Result<'a, u64> {
+    fn u16(&mut self, index: usize) -> Result<u64> {
         let b1 = self.u8(index)?;
         let b2 = self.u8(index + 1)?;
         Ok(b1 << 8 | b2)
     }
     #[inline]
-    fn u32(&mut self, index: usize) -> Result<'a, u64> {
+    fn u32(&mut self, index: usize) -> Result<u64> {
         let b1 = self.u8(index)?;
         let b2 = self.u8(index + 1)?;
         let b3 = self.u8(index + 2)?;
@@ -259,7 +248,7 @@ impl<'a> Deserializer<'a> {
         Ok(b1 << 24 | b2 << 16 | b3 << 8 | b4)
     }
     #[inline]
-    fn u64(&mut self, index: usize) -> Result<'a, u64> {
+    fn u64(&mut self, index: usize) -> Result<u64> {
         let b1 = self.u8(index)?;
         let b2 = self.u8(index + 1)?;
         let b3 = self.u8(index + 2)?;
@@ -287,11 +276,11 @@ impl<'a> Deserializer<'a> {
     /// assert!(cbor_type == Type::UnsignedInteger);
     /// ```
     #[inline]
-    pub fn cbor_type(&mut self) -> Result<'a, Type> {
+    pub fn cbor_type(&mut self) -> Result<Type> {
         Ok(Type::from(self.get(0)?))
     }
     #[inline]
-    fn cbor_expect_type(&mut self, t: Type) -> Result<'a, ()> {
+    fn cbor_expect_type(&mut self, t: Type) -> Result<()> {
         let t_ = self.cbor_type()?;
         if t_ != t {
             Err(Error::Expected(t, t_))
@@ -332,7 +321,7 @@ impl<'a> Deserializer<'a> {
     /// ```
     ///
     #[inline]
-    pub fn cbor_len(&mut self) -> Result<'a, (Len, usize)> {
+    pub fn cbor_len(&mut self) -> Result<(Len, usize)> {
         let b: u8 = self.get(0)? & 0b0001_1111;
         match b {
             0x00..=0x17 => Ok((Len::Len(b as u64), 0)),
@@ -354,7 +343,7 @@ impl<'a> Deserializer<'a> {
     ///
     /// [`LenSz`]: ../enum.LenSz.html
     #[inline]
-    pub fn cbor_len_sz(&mut self) -> Result<'a, LenSz> {
+    pub fn cbor_len_sz(&mut self) -> Result<LenSz> {
         let b: u8 = self.get(0)? & 0b0001_1111;
         match b {
             0x00..=0x17 => Ok(LenSz::Len(b as u64, Sz::Inline)),
@@ -373,7 +362,7 @@ impl<'a> Deserializer<'a> {
 
     /// consume the given `len` from the underlying buffer
     #[inline]
-    pub fn advance(&mut self, len: usize) -> Result<'a, ()> {
+    pub fn advance(&mut self, len: usize) -> Result<()> {
         self.pos += len;
 
         Ok(())
@@ -385,7 +374,7 @@ impl<'a> Deserializer<'a> {
     }
 
     #[inline]
-    pub fn seek(&mut self, pos: usize) -> Result<'a, ()> {
+    pub fn seek(&mut self, pos: usize) -> Result<()> {
         if pos > self.data.len() {
             Err(Error::NotEnough(self.data.len(), pos))
         } else {
@@ -420,14 +409,14 @@ impl<'a> Deserializer<'a> {
     /// // the following line will panic:
     /// let integer = raw.unsigned_integer().unwrap();
     /// ```
-    pub fn unsigned_integer(&mut self) -> Result<'a, u64> {
+    pub fn unsigned_integer(&mut self) -> Result<u64> {
         Ok(self.unsigned_integer_sz()?.0)
     }
 
     /// Read an `UnsignedInteger` from the `Deserializer` with encoding information
     ///
     /// Same as `unsigned_integer` but returns the `Sz` (bytes used) in the encoding
-    pub fn unsigned_integer_sz(&mut self) -> Result<'a, (u64, Sz)> {
+    pub fn unsigned_integer_sz(&mut self) -> Result<(u64, Sz)> {
         self.cbor_expect_type(Type::UnsignedInteger)?;
         let len_sz = self.cbor_len_sz()?;
         match len_sz {
@@ -455,7 +444,7 @@ impl<'a> Deserializer<'a> {
     ///
     /// assert_eq!(integer, -42);
     /// ```
-    pub fn negative_integer(&mut self) -> Result<'a, i64> {
+    pub fn negative_integer(&mut self) -> Result<i64> {
         self.cbor_expect_type(Type::NegativeInteger)?;
         let (len, len_sz) = self.cbor_len()?;
         match len {
@@ -472,7 +461,7 @@ impl<'a> Deserializer<'a> {
     /// Same as `negative_integer` but returns the `Sz` (bytes used)
     /// in the encoding as well as using a `i128` return type as `i64`
     /// does not cover the entire CBOR `nint` range.
-    pub fn negative_integer_sz(&mut self) -> Result<'a, (i128, Sz)> {
+    pub fn negative_integer_sz(&mut self) -> Result<(i128, Sz)> {
         self.cbor_expect_type(Type::NegativeInteger)?;
         let len_sz = self.cbor_len_sz()?;
         match len_sz {
@@ -498,22 +487,17 @@ impl<'a> Deserializer<'a> {
     ///
     /// let bytes = raw.bytes().unwrap();
     /// ```
-    pub fn bytes(&mut self) -> Result<'a, &'a [u8]> {
+    pub fn bytes(&mut self) -> Result<&'a [u8]> {
         Ok(self.bytes_sz(None)?.0)
     }
 
     /// Read a Bytes from the Deserializer with encoding information
     ///
     /// Same as `bytes` but also returns `StringLenSz` for details about the encoding used.
-    #[cfg(feature = "alloc")]
-    pub fn bytes_sz_vec(&mut self) -> Result<'a, (&'a [u8], StringLenSz)> {
-        self.bytes_sz(Some(|len| Vec::with_capacity(len).as_mut_slice()))
-    }
-
     pub fn bytes_sz(
         &mut self,
         sz_alloc: Option<fn(usize) -> &'a mut [(u64, Sz)]>,
-    ) -> Result<'a, (&'a [u8], StringLenSz)> {
+    ) -> Result<(&'a [u8], StringLenSz)> {
         self.cbor_expect_type(Type::Bytes)?;
         let len_sz = self.cbor_len_sz()?;
         self.advance(1 + len_sz.bytes_following())?;
@@ -589,22 +573,17 @@ impl<'a> Deserializer<'a> {
     ///
     /// assert!(&*text == "text");
     /// ```
-    pub fn text(&mut self) -> Result<'a, &'a str> {
+    pub fn text(&mut self) -> Result<&'a str> {
         Ok(self.text_sz(None)?.0)
     }
 
     /// Read a Text from the Deserializer with encoding information
     ///
     /// Same as `text` but also returns `StringLenSz` for details about the encoding used.
-    #[cfg(feature = "alloc")]
-    pub fn text_sz_vec(&mut self) -> Result<'a, (&'a str, StringLenSz)> {
-        self.text_sz(Some(|len| Vec::with_capacity(len).as_mut_slice()))
-    }
-
     pub fn text_sz(
         &mut self,
         sz_alloc: Option<fn(usize) -> &'a mut [(u64, Sz)]>,
-    ) -> Result<'a, (&'a str, StringLenSz)> {
+    ) -> Result<(&'a str, StringLenSz)> {
         self.cbor_expect_type(Type::Text)?;
         let len_sz = self.cbor_len_sz()?;
         self.advance(1 + len_sz.bytes_following())?;
@@ -672,9 +651,9 @@ impl<'a> Deserializer<'a> {
     // Internal helper to decode a series of `len` items using a function. If
     // `len` is indefinite, decode until a `Special::Break`. If `len` is
     // definite, decode that many items.
-    fn internal_items_with<F>(&mut self, len: Len, mut f: F) -> Result<'a, ()>
+    fn internal_items_with<F>(&mut self, len: Len, mut f: F) -> Result<()>
     where
-        F: FnMut(&mut Self) -> Result<'a, ()>,
+        F: FnMut(&mut Self) -> Result<()>,
     {
         match len {
             Len::Indefinite => {
@@ -708,7 +687,7 @@ impl<'a> Deserializer<'a> {
     /// assert_eq!(len, Len::Len(6));
     /// ```
     ///
-    pub fn array(&mut self) -> Result<'a, Len> {
+    pub fn array(&mut self) -> Result<Len> {
         self.cbor_expect_type(Type::Array)?;
         let (len, sz) = self.cbor_len()?;
         self.advance(1 + sz)?;
@@ -719,7 +698,7 @@ impl<'a> Deserializer<'a> {
     ///
     /// Same as `array` but returns the `LenSz` instead which contains
     /// additional information about the encoding used for the length
-    pub fn array_sz(&mut self) -> Result<'a, LenSz> {
+    pub fn array_sz(&mut self) -> Result<LenSz> {
         self.cbor_expect_type(Type::Array)?;
         let len_sz = self.cbor_len_sz()?;
         self.advance(1 + len_sz.bytes_following())?;
@@ -731,16 +710,16 @@ impl<'a> Deserializer<'a> {
     /// This works with either definite or indefinite arrays. Each call to the
     /// function should decode one item. If the function returns an error,
     /// decoding stops and returns that error.
-    pub fn array_with<F>(&mut self, f: F) -> Result<'a, ()>
+    pub fn array_with<F>(&mut self, f: F) -> Result<()>
     where
-        F: FnMut(&mut Self) -> Result<'a, ()>,
+        F: FnMut(&mut Self) -> Result<()>,
     {
         let len = self.array()?;
         self.internal_items_with(len, f)
     }
 
     /// Expect an array of a specified length. Must be a definite-length array.
-    pub fn tuple(&mut self, expected_len: u64, error_location: &'static str) -> Result<'a, ()> {
+    pub fn tuple(&mut self, expected_len: u64, error_location: &'static str) -> Result<()> {
         let actual_len = self.array()?;
         match actual_len {
             Len::Len(len) if expected_len == len => Ok(()),
@@ -765,7 +744,7 @@ impl<'a> Deserializer<'a> {
     /// assert_eq!(len, Len::Len(2));
     /// ```
     ///
-    pub fn map(&mut self) -> Result<'a, Len> {
+    pub fn map(&mut self) -> Result<Len> {
         self.cbor_expect_type(Type::Map)?;
         let (len, sz) = self.cbor_len()?;
         self.advance(1 + sz)?;
@@ -776,7 +755,7 @@ impl<'a> Deserializer<'a> {
     ///
     /// Same as `map` but returns the `LenSz` instead which contains
     /// additional information about the encoding used for the length
-    pub fn map_sz(&mut self) -> Result<'a, LenSz> {
+    pub fn map_sz(&mut self) -> Result<LenSz> {
         self.cbor_expect_type(Type::Map)?;
         let len_sz = self.cbor_len_sz()?;
         self.advance(1 + len_sz.bytes_following())?;
@@ -788,9 +767,9 @@ impl<'a> Deserializer<'a> {
     /// This works with either definite or indefinite maps. Each call to the
     /// function should decode one key followed by one value. If the function
     /// returns an error, decoding stops and returns that error.
-    pub fn map_with<F>(&mut self, f: F) -> Result<'a, ()>
+    pub fn map_with<F>(&mut self, f: F) -> Result<()>
     where
-        F: FnMut(&mut Self) -> Result<'a, ()>,
+        F: FnMut(&mut Self) -> Result<()>,
     {
         let len = self.map()?;
         self.internal_items_with(len, f)
@@ -814,14 +793,14 @@ impl<'a> Deserializer<'a> {
     /// assert_eq!("text", &*raw.text().unwrap());
     /// ```
     ///
-    pub fn tag(&mut self) -> Result<'a, u64> {
+    pub fn tag(&mut self) -> Result<u64> {
         Ok(self.tag_sz()?.0)
     }
 
     /// CBOR Tag with encoding information
     ///
     /// Same as `tag` but returns the `Sz` (bytes used) in the encoding
-    pub fn tag_sz(&mut self) -> Result<'a, (u64, Sz)> {
+    pub fn tag_sz(&mut self) -> Result<(u64, Sz)> {
         self.cbor_expect_type(Type::Tag)?;
         match self.cbor_len_sz()? {
             LenSz::Indefinite => Err(Error::IndefiniteLenNotSupported(Type::Tag)),
@@ -832,7 +811,7 @@ impl<'a> Deserializer<'a> {
         }
     }
 
-    pub fn set_tag(&mut self) -> Result<'a, ()> {
+    pub fn set_tag(&mut self) -> Result<()> {
         let tag = self.tag()?;
         if tag != 258 {
             return Err(Error::ExpectedSetTag);
@@ -845,7 +824,7 @@ impl<'a> Deserializer<'a> {
     ///
     /// Useful when decoding a variable-length array or map where the items may themselves use
     /// `Special`, such as bool values.
-    pub fn special_break(&mut self) -> Result<'a, bool> {
+    pub fn special_break(&mut self) -> Result<bool> {
         self.cbor_expect_type(Type::Special)?;
         let b = self.get(0)? & 0b0001_1111;
         if b == 0x1f {
@@ -856,7 +835,7 @@ impl<'a> Deserializer<'a> {
         }
     }
 
-    pub fn special(&mut self) -> Result<'a, Special> {
+    pub fn special(&mut self) -> Result<Special> {
         self.cbor_expect_type(Type::Special)?;
         let b = self.get(0)? & 0b0001_1111;
         match b {
@@ -912,15 +891,15 @@ impl<'a> Deserializer<'a> {
         }
     }
 
-    pub fn bool(&mut self) -> Result<'a, bool> {
+    pub fn bool(&mut self) -> Result<bool> {
         self.special()?.unwrap_bool()
     }
 
-    pub fn float(&mut self) -> Result<'a, f64> {
+    pub fn float(&mut self) -> Result<f64> {
         self.special()?.unwrap_float()
     }
 
-    pub fn deserialize<T>(&mut self) -> Result<'a, T>
+    pub fn deserialize<T>(&mut self) -> Result<T>
     where
         T: Deserialize<'a>,
     {
@@ -929,7 +908,7 @@ impl<'a> Deserializer<'a> {
 
     /// Deserialize a value of type `T` and check that there is no
     /// trailing data.
-    pub fn deserialize_complete<T>(&mut self) -> Result<'a, T>
+    pub fn deserialize_complete<T>(&mut self) -> Result<T>
     where
         T: Deserialize<'a>,
     {
@@ -948,7 +927,7 @@ macro_rules! deserialize_array {
     ( $( $x:expr ),* ) => {
         $(
             impl<'a> Deserialize<'a> for [u8; $x] {
-                fn deserialize(raw: &mut Deserializer<'a>) ->  Result<'a, Self> {
+                fn deserialize(raw: &mut Deserializer<'a>) ->  Result<Self> {
                     let mut bytes = [0u8; $x];
 
                     let len = raw.array()?;

@@ -55,7 +55,7 @@ impl<'a> Serialize for ObjectKey {
     fn serialize<'se>(
         &self,
         serializer: &'se mut Serializer<'se>,
-    ) -> Result<'se, &'se mut Serializer<'se>> {
+    ) -> Result<&'se mut Serializer<'se>> {
         match self {
             ObjectKey::Integer(ref v) => serializer.write_unsigned_integer(*v),
             ObjectKey::Bytes(ref v) => serializer.write_bytes(v),
@@ -65,7 +65,7 @@ impl<'a> Serialize for ObjectKey {
 }
 #[cfg(feature = "alloc")]
 impl<'a> Deserialize<'a> for ObjectKey {
-    fn deserialize(raw: &'a mut Deserializer) -> Result<'a, Self> {
+    fn deserialize(raw: &mut Deserializer<'a>) -> Result<Self> {
         match raw.cbor_type()? {
             Type::UnsignedInteger => Ok(ObjectKey::Integer(raw.unsigned_integer()?)),
             Type::Bytes => Ok(ObjectKey::Bytes(raw.bytes()?.to_vec())),
@@ -102,7 +102,10 @@ pub enum Value {
 
 #[cfg(feature = "alloc")]
 impl Serialize for Value {
-    fn serialize<'se>(&self, serializer: &'se mut Serializer) -> Result<&'se mut Serializer> {
+    fn serialize<'se>(
+        &'se self,
+        serializer: &'se mut Serializer<'se>,
+    ) -> Result<&'se mut Serializer> {
         match self {
             Value::U64(ref v) => serializer.write_unsigned_integer(*v),
             Value::I64(ref v) => serializer.write_negative_integer(*v),
@@ -143,7 +146,7 @@ impl Serialize for Value {
 }
 #[cfg(feature = "alloc")]
 impl<'a> Deserialize<'a> for Value {
-    fn deserialize(raw: &'a mut Deserializer) -> Result<'a, Self> {
+    fn deserialize(raw: &mut Deserializer<'a>) -> Result<Self> {
         match raw.cbor_type()? {
             Type::UnsignedInteger => Ok(Value::U64(raw.unsigned_integer()?)),
             Type::NegativeInteger => Ok(Value::I64(raw.negative_integer()?)),

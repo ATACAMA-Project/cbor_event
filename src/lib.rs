@@ -102,14 +102,13 @@ pub fn test_encode_decode<
 >(
     v: &'c V,
     data: &'c mut [u8],
-) -> Result<'b, bool> {
+) -> Result<bool> {
     let mut se = se::Serializer::new(data);
-    v.serialize(&mut se)
-        .map_err(|e| Error::CustomError("FAIL!"))?;
+    v.serialize(&mut se)?;
     let bytes = se.finalize();
 
     let mut raw = de::Deserializer::from(bytes);
-    let v_ = Deserialize::deserialize(&mut raw).map_err(|e| Error::CustomError("FAIL!"))?;
+    let v_ = Deserialize::deserialize(&mut raw)?;
 
     Ok(v == &v_)
 }
