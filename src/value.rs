@@ -325,49 +325,49 @@ mod test {
 
     #[test]
     fn u64() {
-        assert!(test_encode_decode(&Value::U64(0)).unwrap());
-        assert!(test_encode_decode(&Value::U64(23)).unwrap());
-        assert!(test_encode_decode(&Value::U64(0xff)).unwrap());
-        assert!(test_encode_decode(&Value::U64(0x100)).unwrap());
-        assert!(test_encode_decode(&Value::U64(0xffff)).unwrap());
-        assert!(test_encode_decode(&Value::U64(0x10000)).unwrap());
-        assert!(test_encode_decode(&Value::U64(0xffffffff)).unwrap());
-        assert!(test_encode_decode(&Value::U64(0x100000000)).unwrap());
-        assert!(test_encode_decode(&Value::U64(0xffffffffffffffff)).unwrap());
+        assert!(test_encode_decode(Value::U64(0)).unwrap());
+        assert!(test_encode_decode(Value::U64(23)).unwrap());
+        assert!(test_encode_decode(Value::U64(0xff)).unwrap());
+        assert!(test_encode_decode(Value::U64(0x100)).unwrap());
+        assert!(test_encode_decode(Value::U64(0xffff)).unwrap());
+        assert!(test_encode_decode(Value::U64(0x10000)).unwrap());
+        assert!(test_encode_decode(Value::U64(0xffffffff)).unwrap());
+        assert!(test_encode_decode(Value::U64(0x100000000)).unwrap());
+        assert!(test_encode_decode(Value::U64(0xffffffffffffffff)).unwrap());
     }
 
     #[test]
     fn i64() {
-        assert!(test_encode_decode(&Value::I64(0)).unwrap());
-        assert!(test_encode_decode(&Value::I64(23)).unwrap());
-        assert!(test_encode_decode(&Value::I64(-99)).unwrap());
-        assert!(test_encode_decode(&Value::I64(99999)).unwrap());
-        assert!(test_encode_decode(&Value::I64(-9999999)).unwrap());
-        assert!(test_encode_decode(&Value::I64(-283749237289)).unwrap());
-        assert!(test_encode_decode(&Value::I64(93892929229)).unwrap());
+        assert!(test_encode_decode(Value::I64(0)).unwrap());
+        assert!(test_encode_decode(Value::I64(23)).unwrap());
+        assert!(test_encode_decode(Value::I64(-99)).unwrap());
+        assert!(test_encode_decode(Value::I64(99999)).unwrap());
+        assert!(test_encode_decode(Value::I64(-9999999)).unwrap());
+        assert!(test_encode_decode(Value::I64(-283749237289)).unwrap());
+        assert!(test_encode_decode(Value::I64(93892929229)).unwrap());
     }
 
     #[test]
     fn bytes() {
-        assert!(test_encode_decode(&Value::Bytes(vec![])).unwrap());
-        assert!(test_encode_decode(&Value::Bytes(vec![0; 23])).unwrap());
-        assert!(test_encode_decode(&Value::Bytes(vec![0; 24])).unwrap());
-        assert!(test_encode_decode(&Value::Bytes(vec![0; 256])).unwrap());
-        assert!(test_encode_decode(&Value::Bytes(vec![0; 10293])).unwrap());
-        assert!(test_encode_decode(&Value::Bytes(vec![0; 99999000])).unwrap());
+        assert!(test_encode_decode(Value::Bytes(vec![])).unwrap());
+        assert!(test_encode_decode(Value::Bytes(vec![0; 23])).unwrap());
+        assert!(test_encode_decode(Value::Bytes(vec![0; 24])).unwrap());
+        assert!(test_encode_decode(Value::Bytes(vec![0; 256])).unwrap());
+        assert!(test_encode_decode(Value::Bytes(vec![0; 10293])).unwrap());
+        assert!(test_encode_decode(Value::Bytes(vec![0; 99999000])).unwrap());
     }
 
     #[test]
     fn text() {
-        assert!(test_encode_decode(&Value::Text("".to_owned())).unwrap());
-        assert!(test_encode_decode(&Value::Text("hellow world".to_owned())).unwrap());
-        assert!(test_encode_decode(&Value::Text("some sentence, some sentence... some sentence...some sentence, some sentence... some sentence...".to_owned())).unwrap());
+        assert!(test_encode_decode(Value::Text("".to_owned())).unwrap());
+        assert!(test_encode_decode(Value::Text("hellow world".to_owned())).unwrap());
+        assert!(test_encode_decode(Value::Text("some sentence, some sentence... some sentence...some sentence, some sentence... some sentence...".to_owned())).unwrap());
     }
 
     #[test]
     fn array() {
-        assert!(test_encode_decode(&Value::Array(vec![])).unwrap());
-        assert!(test_encode_decode(&Value::Array(vec![
+        assert!(test_encode_decode(Value::Array(vec![])).unwrap());
+        assert!(test_encode_decode(Value::Array(vec![
             Value::U64(0),
             Value::Text("some text".to_owned())
         ]))
@@ -376,8 +376,8 @@ mod test {
 
     #[test]
     fn iarray() {
-        assert!(test_encode_decode(&Value::IArray(vec![])).unwrap());
-        assert!(test_encode_decode(&Value::IArray(vec![
+        assert!(test_encode_decode(Value::IArray(vec![])).unwrap());
+        assert!(test_encode_decode(Value::IArray(vec![
             Value::U64(0),
             Value::Text("some text".to_owned())
         ]))
@@ -386,16 +386,16 @@ mod test {
 
     #[test]
     fn tag() {
-        assert!(test_encode_decode(&Value::Tag(23, Box::new(Value::U64(0)))).unwrap());
-        assert!(test_encode_decode(&Value::Tag(24, Box::new(Value::Bytes(vec![0; 32])))).unwrap());
+        assert!(test_encode_decode(Value::Tag(23, Box::new(Value::U64(0)))).unwrap());
+        assert!(test_encode_decode(Value::Tag(24, Box::new(Value::Bytes(vec![0; 32])))).unwrap());
         assert!(
-            test_encode_decode(&Value::Tag(0x1ff, Box::new(Value::Bytes(vec![0; 624])))).unwrap()
+            test_encode_decode(Value::Tag(0x1ff, Box::new(Value::Bytes(vec![0; 624])))).unwrap()
         );
     }
 
     quickcheck! {
         fn property_encode_decode(value: Value) -> bool {
-            test_encode_decode(&value).unwrap()
+            test_encode_decode(value).unwrap()
         }
     }
 }

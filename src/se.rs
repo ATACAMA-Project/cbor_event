@@ -220,8 +220,7 @@ where
     T: Serialize + 'a,
 {
     let mut se = Serializer::new(buffer);
-    data.serialize(&mut se)?;
-    serializer.write_bytes(se.finalize())
+    serializer.write_bytes(data.serialize(&mut se)?.finalize())
 }
 
 // use a default capacity when allocating the Serializer to avoid small reallocation
@@ -275,7 +274,7 @@ impl<'a> Serializer<'a> {
     /// # assert!(bytes.is_empty());
     /// ```
     #[inline]
-    pub fn finalize(self) -> &'a [u8] {
+    pub fn finalize(&'a self) -> &'a [u8] {
         self.data
     }
 
